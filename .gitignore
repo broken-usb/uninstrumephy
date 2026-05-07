@@ -1,3 +1,34 @@
+# Formatos Não Comprimidos (Uncompressed)
+*.wav
+*.aiff
+*.aif
+*.au
+*.raw
+*.pcm
+
+# Formatos Comprimidos Sem Perdas (Lossless)
+*.flac
+*.alac
+*.ape
+*.wv
+
+# Formatos Comprimidos Com Perdas (Lossy)
+*.mp3
+*.aac
+*.m4a
+*.m4b
+*.m4p
+*.ogg
+*.oga
+*.mogg
+*.opus
+*.wma
+*.mpc
+*.mp1
+*.mp2
+*.aax
+*.nmf
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
