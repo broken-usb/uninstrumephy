@@ -1,0 +1,36 @@
+name: CI - Cérebro de Timbragem (Ubuntu)
+
+# Define os gatilhos: O workflow roda sempre que houver um Push ou Pull Request na branch main
+on:
+  push:
+    branches: [ "main", "master" ]
+  pull_request:
+    branches: [ "main", "master" ]
+
+jobs:
+  testar-ambiente:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: 1. Clonar o repositório
+      uses: actions/checkout@v4
+
+    # Usaremos o Python 3.12 no servidor para garantir a estabilidade das bibliotecas de IA
+    - name: 2. Configurar o Python 3.12
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+        cache: 'pip' # Faz cache das bibliotecas para deixar as próximas execuções mais rápidas
+
+    - name: 3. Instalar Dependências (IA e MIR)
+      run: |
+        python -m pip install --upgrade pip
+        pip install demucs torchcodec soundfile librosa numpy
+
+    - name: 4. Teste de Fumaça (Verificação de Sintaxe)
+      run: |
+        echo "[CI] Compilando os módulos do core para checar erros de sintaxe..."
+        python -m py_compile core/separator.py
+        python -m py_compile core/analyzer.py
+        python -m py_compile main_cli.py
+        echo "[CI] Sucesso! Nenhuma quebra de código detectada."
