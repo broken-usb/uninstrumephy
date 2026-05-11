@@ -49,6 +49,9 @@ packaging==26.2
 platformdirs==4.9.6
 pooch==1.9.0
 pycparser==3.0
+PyQt6==6.11.0
+PyQt6-Qt6==6.11.0
+PyQt6_sip==13.11.1
 PyYAML==6.0.3
 requests==2.33.1
 retrying==1.4.2
