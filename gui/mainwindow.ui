@@ -43,10 +43,13 @@
    <property name="geometry">
     <rect>
      <x>230</x>
-     <y>40</y>
-     <width>183</width>
+     <y>10</y>
+     <width>481</width>
      <height>18</height>
     </rect>
+   </property>
+   <property name="frameShape">
+    <enum>QFrame::Shape::Box</enum>
    </property>
    <property name="text">
     <string>Nenhum arquivo selecionado.</string>
@@ -57,9 +60,12 @@
     <rect>
      <x>10</x>
      <y>480</y>
-     <width>186</width>
+     <width>701</width>
      <height>18</height>
     </rect>
+   </property>
+   <property name="frameShape">
+    <enum>QFrame::Shape::Box</enum>
    </property>
    <property name="text">
     <string>Threshold do Noise Gate: -- dB</string>
@@ -70,9 +76,12 @@
     <rect>
      <x>10</x>
      <y>510</y>
-     <width>320</width>
+     <width>701</width>
      <height>18</height>
     </rect>
+   </property>
+   <property name="frameShape">
+    <enum>QFrame::Shape::Box</enum>
    </property>
    <property name="text">
     <string>Curva de EQ Calculada: Bass (--) | Mid (--) | Treble (--)</string>
@@ -82,10 +91,13 @@
    <property name="geometry">
     <rect>
      <x>10</x>
-     <y>400</y>
-     <width>132</width>
+     <y>450</y>
+     <width>701</width>
      <height>18</height>
     </rect>
+   </property>
+   <property name="frameShape">
+    <enum>QFrame::Shape::Box</enum>
    </property>
    <property name="text">
     <string>Status: Aguardando...</string>
@@ -98,8 +110,8 @@
    <property name="geometry">
     <rect>
      <x>10</x>
-     <y>70</y>
-     <width>121</width>
+     <y>90</y>
+     <width>171</width>
      <height>26</height>
     </rect>
    </property>
@@ -114,8 +126,8 @@
    <property name="geometry">
     <rect>
      <x>10</x>
-     <y>100</y>
-     <width>121</width>
+     <y>120</y>
+     <width>171</width>
      <height>26</height>
     </rect>
    </property>
@@ -129,9 +141,9 @@
    </property>
    <property name="geometry">
     <rect>
-     <x>10</x>
-     <y>450</y>
-     <width>171</width>
+     <x>80</x>
+     <y>200</y>
+     <width>101</width>
      <height>26</height>
     </rect>
    </property>
@@ -146,14 +158,89 @@
    <property name="geometry">
     <rect>
      <x>10</x>
-     <y>420</y>
+     <y>170</y>
      <width>171</width>
      <height>26</height>
     </rect>
    </property>
    <property name="text">
-    <string>▶ Tocar Guitarra Isolada</string>
+    <string>▶ Tocar Faixa Isolada</string>
    </property>
+  </widget>
+  <widget class="QLabel" name="lbl_info">
+   <property name="geometry">
+    <rect>
+     <x>230</x>
+     <y>40</y>
+     <width>481</width>
+     <height>20</height>
+    </rect>
+   </property>
+   <property name="frameShape">
+    <enum>QFrame::Shape::Box</enum>
+   </property>
+   <property name="text">
+    <string>Música: Nenhuma | Duração: 00:00</string>
+   </property>
+  </widget>
+  <widget class="QSlider" name="slider_volume">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>150</y>
+     <width>160</width>
+     <height>16</height>
+    </rect>
+   </property>
+   <property name="maximum">
+    <number>110</number>
+   </property>
+   <property name="value">
+    <number>70</number>
+   </property>
+   <property name="orientation">
+    <enum>Qt::Orientation::Horizontal</enum>
+   </property>
+  </widget>
+  <widget class="QComboBox" name="combo_stems">
+   <property name="geometry">
+    <rect>
+     <x>10</x>
+     <y>200</y>
+     <width>71</width>
+     <height>26</height>
+    </rect>
+   </property>
+   <item>
+    <property name="text">
+     <string>guitar</string>
+    </property>
+   </item>
+   <item>
+    <property name="text">
+     <string>bass</string>
+    </property>
+   </item>
+   <item>
+    <property name="text">
+     <string>drums</string>
+    </property>
+   </item>
+   <item>
+    <property name="text">
+     <string>piano</string>
+    </property>
+   </item>
+   <item>
+    <property name="text">
+     <string>vocals</string>
+    </property>
+   </item>
+   <item>
+    <property name="text">
+     <string>other</string>
+    </property>
+   </item>
   </widget>
  </widget>
  <resources/>
