@@ -11,10 +11,11 @@ from core.separator import AudioSeparator
 from core.analyzer import AudioAnalyzer
 
 # ==========================================
-# 1. O MOTOR ASSÍNCRONO (WORKER THREAD)
+# 1. OS MOTORES ASSÍNCRONOS (WORKER THREADS)
 # ==========================================
-class AIMirWorker(QThread):
-    finished = pyqtSignal(dict, str) 
+
+class DemucsWorker(QThread):
+    finished = pyqtSignal(str, str) # Retorna (caminho_guitarra, diretorio_stems)
     error = pyqtSignal(str)
     status = pyqtSignal(str)
 
@@ -24,22 +25,36 @@ class AIMirWorker(QThread):
 
     def run(self):
         try:
-            self.status.emit("Iniciando IA (Demucs)... Isso pode demorar...")
+            self.status.emit("Iniciando IA (Demucs)... Isolando faixas (pode demorar)...")
             sep = AudioSeparator(output_dir="output")
             guitar_path = sep.extract_guitar(self.audio_path)
 
             if guitar_path:
-                self.status.emit("Extraindo parâmetros matemáticos (Librosa)...")
-                ana = AudioAnalyzer()
-                params = ana.analyze_guitar(guitar_path)
-                
                 stems_dir = os.path.dirname(guitar_path)
-                self.finished.emit(params, stems_dir)
+                self.finished.emit(guitar_path, stems_dir)
             else:
-                self.error.emit("Falha ao isolar as faixas.")
-                
+                self.error.emit("Falha ao isolar as faixas no Demucs.")
         except Exception as e:
-            self.error.emit(f"Erro: {str(e)}")
+            self.error.emit(f"Erro no Demucs: {str(e)}")
+
+
+class AnalysisWorker(QThread):
+    finished = pyqtSignal(dict) # Retorna apenas os parâmetros matemáticos
+    error = pyqtSignal(str)
+    status = pyqtSignal(str)
+
+    def __init__(self, guitar_path):
+        super().__init__()
+        self.guitar_path = guitar_path
+
+    def run(self):
+        try:
+            self.status.emit("Extraindo parâmetros matemáticos (Librosa)...")
+            ana = AudioAnalyzer()
+            params = ana.analyze_guitar(self.guitar_path)
+            self.finished.emit(params)
+        except Exception as e:
+            self.error.emit(f"Erro na análise: {str(e)}")
 
 # ==========================================
 # 2. A JANELA PRINCIPAL (CONTROLADOR)
@@ -50,44 +65,40 @@ class MainWindow(QDialog, Ui_Dialog):
         self.setupUi(self)
 
         self.path_original = ""
+        self.path_guitarra = ""
         self.path_stems_dir = ""
 
-        # =====================================
-        # CONFIGURAÇÃO: DOIS MOTORES DE ÁUDIO
-        # =====================================
-        # Motor 1: Música Original
+        # MOTORES DE ÁUDIO
         self.audio_out_orig = QAudioOutput()
         self.audio_out_orig.setVolume(self.slider_vol_orig.value() / 100.0)
         self.player_orig = QMediaPlayer()
         self.player_orig.setAudioOutput(self.audio_out_orig)
 
-        # Motor 2: Faixa Isolada (Stems)
         self.audio_out_stem = QAudioOutput()
         self.audio_out_stem.setVolume(self.slider_vol_stem.value() / 100.0)
         self.player_stem = QMediaPlayer()
         self.player_stem.setAudioOutput(self.audio_out_stem)
 
-        # =====================================
-        # CONEXÕES DA INTERFACE (SIGNALS & SLOTS)
-        # =====================================
+        # CONEXÕES: Botões de Fluxo de Trabalho
         self.btn_load.clicked.connect(self.load_audio_file)
+        self.btn_run_demucs.clicked.connect(self.start_demucs)
+        self.btn_run_analysis.clicked.connect(self.start_analysis)
         
-        # Conexões de Volume
+        # CONEXÕES: Volume e Playback (Música Original)
         self.slider_vol_orig.valueChanged.connect(lambda v: self.audio_out_orig.setVolume(v / 100.0))
-        self.slider_vol_stem.valueChanged.connect(lambda v: self.audio_out_stem.setVolume(v / 100.0))
-        
-        # Conexões de Play/Stop
         self.btn_play_orig.clicked.connect(self.play_original)
         self.btn_stop_orig.clicked.connect(lambda: self.player_orig.stop())
+
+        # CONEXÕES: Volume e Playback (Stems)
+        self.slider_vol_stem.valueChanged.connect(lambda v: self.audio_out_stem.setVolume(v / 100.0))
         self.btn_play_guitar.clicked.connect(self.play_stem)
         self.btn_stop_guitar.clicked.connect(lambda: self.player_stem.stop())
 
-        # Conexões das Barras de Tempo (Seekbars) - Original
+        # CONEXÕES: Barras de Tempo
         self.player_orig.durationChanged.connect(lambda d: self.slider_seek_orig.setMaximum(d))
         self.player_orig.positionChanged.connect(lambda p: self.slider_seek_orig.setValue(p))
         self.slider_seek_orig.sliderMoved.connect(lambda p: self.player_orig.setPosition(p))
 
-        # Conexões das Barras de Tempo (Seekbars) - Stems
         self.player_stem.durationChanged.connect(lambda d: self.slider_seek_stem.setMaximum(d))
         self.player_stem.positionChanged.connect(lambda p: self.slider_seek_stem.setValue(p))
         self.slider_seek_stem.sliderMoved.connect(lambda p: self.player_stem.setPosition(p))
@@ -107,10 +118,8 @@ class MainWindow(QDialog, Ui_Dialog):
                 titulo = tag.title if tag.title else "Desconhecido"
                 artista = tag.artist if tag.artist else "Desconhecido"
                 album = tag.album if tag.album else "Desconhecido"
-                
                 self.lbl_metadata.setText(f"Música: {titulo}\nArtista: {artista}\nÁlbum: {album}")
                 
-                # Extrai a capa
                 img_data = tag.get_image()
                 if img_data:
                     img = QImage()
@@ -118,56 +127,87 @@ class MainWindow(QDialog, Ui_Dialog):
                     self.lbl_cover.setPixmap(QPixmap(img))
                 else:
                     self.lbl_cover.setText("Capa não disponível")
-            except Exception as e:
+            except:
                 self.lbl_metadata.setText("Sem metadados.")
                 self.lbl_cover.setText("Sem Capa")
             
-            # Prepara a UI para análise
+            # ESTADO DOS BOTÕES: Libera o player original e o botão do Demucs
             self.btn_play_orig.setEnabled(True)
             self.btn_stop_orig.setEnabled(True)
+            self.btn_run_demucs.setEnabled(True)
+            
+            # Trava o restante até que o Demucs termine
+            self.btn_run_analysis.setEnabled(False)
             self.btn_play_guitar.setEnabled(False)
             self.btn_stop_guitar.setEnabled(False)
             self.combo_stems.setEnabled(False)
             
-            self.start_analysis(file_name)
+            self.lbl_status.setText("Status: Música carregada. Aguardando comando...")
+            self.progress_bar.setValue(0)
 
-    def start_analysis(self, file_path):
-        self.btn_load.setEnabled(False) 
-        self.progress_bar.setRange(0, 0)
+    # --- FLUXO 1: DEMUCS ---
+    def start_demucs(self):
+        self.btn_run_demucs.setEnabled(False) 
+        self.btn_load.setEnabled(False)
+        self.progress_bar.setRange(0, 0) # Carregando infinito
 
-        self.worker = AIMirWorker(file_path)
-        self.worker.status.connect(self.update_status)
-        self.worker.finished.connect(self.on_analysis_finished)
-        self.worker.error.connect(self.on_analysis_error)
-        self.worker.start()
+        self.demucs_thread = DemucsWorker(self.path_original)
+        self.demucs_thread.status.connect(self.update_status)
+        self.demucs_thread.finished.connect(self.on_demucs_finished)
+        self.demucs_thread.error.connect(self.on_error)
+        self.demucs_thread.start()
 
-    def update_status(self, msg):
-        self.lbl_status.setText(f"Status: {msg}")
-
-    def on_analysis_finished(self, params, stems_dir):
+    def on_demucs_finished(self, guitar_path, stems_dir):
+        self.path_guitarra = guitar_path
         self.path_stems_dir = stems_dir
+        
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
-        self.lbl_status.setText("Status: Concluído com sucesso!")
+        self.lbl_status.setText("Status: Faixas separadas com sucesso!")
         self.btn_load.setEnabled(True)
 
+        # Libera o player de stems e o botão de Análise!
         self.btn_play_guitar.setEnabled(True)
         self.btn_stop_guitar.setEnabled(True)
         self.combo_stems.setEnabled(True)
+        self.btn_run_analysis.setEnabled(True)
+
+    # --- FLUXO 2: LIBROSA ---
+    def start_analysis(self):
+        self.btn_run_analysis.setEnabled(False)
+        self.btn_load.setEnabled(False)
+        self.progress_bar.setRange(0, 0) 
+
+        self.analysis_thread = AnalysisWorker(self.path_guitarra)
+        self.analysis_thread.status.connect(self.update_status)
+        self.analysis_thread.finished.connect(self.on_analysis_finished)
+        self.analysis_thread.error.connect(self.on_error)
+        self.analysis_thread.start()
+
+    def on_analysis_finished(self, params):
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(100)
+        self.lbl_status.setText("Status: Parâmetros calculados com sucesso!")
+        self.btn_load.setEnabled(True)
 
         gate = params.get("noise_gate_threshold_db", "--")
         eq = params.get("eq", {})
         self.lbl_gate.setText(f"Threshold: {gate} dB")
         self.lbl_eq.setText(f"EQ: B({eq.get('bass')}) | M({eq.get('mid')}) | T({eq.get('treble')})")
 
-    def on_analysis_error(self, err_msg):
+    # --- FUNÇÕES GERAIS ---
+    def update_status(self, msg):
+        self.lbl_status.setText(f"Status: {msg}")
+
+    def on_error(self, err_msg):
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self.lbl_status.setText("Status: Erro no processamento.")
         self.btn_load.setEnabled(True)
+        self.btn_run_demucs.setEnabled(True) # Permite tentar de novo
         QMessageBox.critical(self, "Erro", err_msg)
 
-    # --- FUNÇÕES DE PLAYBACK INDEPENDENTES ---
+    # --- FUNÇÕES DE PLAYBACK ---
     def play_original(self):
         if self.path_original:
             self.player_orig.setSource(QUrl.fromLocalFile(self.path_original))

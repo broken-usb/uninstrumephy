@@ -100,6 +100,14 @@ class Ui_Dialog(object):
         self.slider_vol_stem.setProperty("value", 50)
         self.slider_vol_stem.setOrientation(QtCore.Qt.Orientation.Horizontal)
         self.slider_vol_stem.setObjectName("slider_vol_stem")
+        self.btn_run_demucs = QtWidgets.QPushButton(parent=Dialog)
+        self.btn_run_demucs.setEnabled(False)
+        self.btn_run_demucs.setGeometry(QtCore.QRect(10, 410, 201, 26))
+        self.btn_run_demucs.setObjectName("btn_run_demucs")
+        self.btn_run_analysis = QtWidgets.QPushButton(parent=Dialog)
+        self.btn_run_analysis.setEnabled(False)
+        self.btn_run_analysis.setGeometry(QtCore.QRect(220, 410, 201, 26))
+        self.btn_run_analysis.setObjectName("btn_run_analysis")
 
         self.retranslateUi(Dialog)
         QtCore.QMetaObject.connectSlotsByName(Dialog)
@@ -123,6 +131,8 @@ class Ui_Dialog(object):
         self.combo_stems.setItemText(3, _translate("Dialog", "piano"))
         self.combo_stems.setItemText(4, _translate("Dialog", "vocals"))
         self.combo_stems.setItemText(5, _translate("Dialog", "other"))
+        self.btn_run_demucs.setText(_translate("Dialog", "Separar Faixas (IA Demucs)"))
+        self.btn_run_analysis.setText(_translate("Dialog", "Extrair Tone Matching (Librosa)"))
 
 
 if __name__ == "__main__":
