@@ -2,7 +2,9 @@ import sys
 import os
 from PyQt6.QtWidgets import QApplication, QDialog, QFileDialog, QMessageBox
 from PyQt6.QtCore import QThread, pyqtSignal, QUrl
+from PyQt6.QtGui import QPixmap, QImage
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+from tinytag import TinyTag
 
 from gui.ui_mainwindow import Ui_Dialog
 from core.separator import AudioSeparator
@@ -31,7 +33,6 @@ class AIMirWorker(QThread):
                 ana = AudioAnalyzer()
                 params = ana.analyze_guitar(guitar_path)
                 
-                # Vamos extrair o diretório onde todos os stems (.wav) estão salvos
                 stems_dir = os.path.dirname(guitar_path)
                 self.finished.emit(params, stems_dir)
             else:
@@ -39,7 +40,6 @@ class AIMirWorker(QThread):
                 
         except Exception as e:
             self.error.emit(f"Erro: {str(e)}")
-
 
 # ==========================================
 # 2. A JANELA PRINCIPAL (CONTROLADOR)
@@ -50,29 +50,47 @@ class MainWindow(QDialog, Ui_Dialog):
         self.setupUi(self)
 
         self.path_original = ""
-        self.path_stems_dir = "" # Guardamos a pasta inteira, não só a guitarra
+        self.path_stems_dir = ""
 
-        # Configuração do Motor de Áudio
-        self.audio_output = QAudioOutput()
-        # Inicia com o valor do Slider (assumindo 0-100 no Qt Creator)
-        self.audio_output.setVolume(self.slider_volume.value() / 100.0) 
-        self.player = QMediaPlayer()
-        self.player.setAudioOutput(self.audio_output)
+        # =====================================
+        # CONFIGURAÇÃO: DOIS MOTORES DE ÁUDIO
+        # =====================================
+        # Motor 1: Música Original
+        self.audio_out_orig = QAudioOutput()
+        self.audio_out_orig.setVolume(self.slider_vol_orig.value() / 100.0)
+        self.player_orig = QMediaPlayer()
+        self.player_orig.setAudioOutput(self.audio_out_orig)
 
-        # Conexões: Funcionalidades
+        # Motor 2: Faixa Isolada (Stems)
+        self.audio_out_stem = QAudioOutput()
+        self.audio_out_stem.setVolume(self.slider_vol_stem.value() / 100.0)
+        self.player_stem = QMediaPlayer()
+        self.player_stem.setAudioOutput(self.audio_out_stem)
+
+        # =====================================
+        # CONEXÕES DA INTERFACE (SIGNALS & SLOTS)
+        # =====================================
         self.btn_load.clicked.connect(self.load_audio_file)
-        self.slider_volume.valueChanged.connect(self.change_volume)
         
-        # Conexões: Áudio Original
+        # Conexões de Volume
+        self.slider_vol_orig.valueChanged.connect(lambda v: self.audio_out_orig.setVolume(v / 100.0))
+        self.slider_vol_stem.valueChanged.connect(lambda v: self.audio_out_stem.setVolume(v / 100.0))
+        
+        # Conexões de Play/Stop
         self.btn_play_orig.clicked.connect(self.play_original)
-        self.btn_stop_orig.clicked.connect(self.stop_audio)
-        
-        # Conexões: Áudio Isolado (Stems)
+        self.btn_stop_orig.clicked.connect(lambda: self.player_orig.stop())
         self.btn_play_guitar.clicked.connect(self.play_stem)
-        self.btn_stop_guitar.clicked.connect(self.stop_audio)
+        self.btn_stop_guitar.clicked.connect(lambda: self.player_stem.stop())
 
-        # Conexão: Atualização de Duração do Áudio
-        self.player.durationChanged.connect(self.update_duration)
+        # Conexões das Barras de Tempo (Seekbars) - Original
+        self.player_orig.durationChanged.connect(lambda d: self.slider_seek_orig.setMaximum(d))
+        self.player_orig.positionChanged.connect(lambda p: self.slider_seek_orig.setValue(p))
+        self.slider_seek_orig.sliderMoved.connect(lambda p: self.player_orig.setPosition(p))
+
+        # Conexões das Barras de Tempo (Seekbars) - Stems
+        self.player_stem.durationChanged.connect(lambda d: self.slider_seek_stem.setMaximum(d))
+        self.player_stem.positionChanged.connect(lambda p: self.slider_seek_stem.setValue(p))
+        self.slider_seek_stem.sliderMoved.connect(lambda p: self.player_stem.setPosition(p))
 
     def load_audio_file(self):
         file_name, _ = QFileDialog.getOpenFileName(
@@ -81,11 +99,30 @@ class MainWindow(QDialog, Ui_Dialog):
         
         if file_name:
             self.path_original = file_name
-            nome_arquivo = os.path.basename(file_name)
-            self.lbl_filepath.setText(f"Arquivo: {nome_arquivo}")
-            self.lbl_info.setText(f"Música: {nome_arquivo} | Duração: Aguardando Player...")
+            self.lbl_filepath.setText(f"Arquivo: {os.path.basename(file_name)}")
             
-            # Ativa e desativa botões de acordo com o estado
+            # --- EXTRAÇÃO DE METADADOS E CAPA ---
+            try:
+                tag = TinyTag.get(file_name, image=True)
+                titulo = tag.title if tag.title else "Desconhecido"
+                artista = tag.artist if tag.artist else "Desconhecido"
+                album = tag.album if tag.album else "Desconhecido"
+                
+                self.lbl_metadata.setText(f"Música: {titulo}\nArtista: {artista}\nÁlbum: {album}")
+                
+                # Extrai a capa
+                img_data = tag.get_image()
+                if img_data:
+                    img = QImage()
+                    img.loadFromData(img_data)
+                    self.lbl_cover.setPixmap(QPixmap(img))
+                else:
+                    self.lbl_cover.setText("Capa não disponível")
+            except Exception as e:
+                self.lbl_metadata.setText("Sem metadados.")
+                self.lbl_cover.setText("Sem Capa")
+            
+            # Prepara a UI para análise
             self.btn_play_orig.setEnabled(True)
             self.btn_stop_orig.setEnabled(True)
             self.btn_play_guitar.setEnabled(False)
@@ -96,7 +133,7 @@ class MainWindow(QDialog, Ui_Dialog):
 
     def start_analysis(self, file_path):
         self.btn_load.setEnabled(False) 
-        self.progress_bar.setRange(0, 0) # Modo "carregando infinito"
+        self.progress_bar.setRange(0, 0)
 
         self.worker = AIMirWorker(file_path)
         self.worker.status.connect(self.update_status)
@@ -109,73 +146,46 @@ class MainWindow(QDialog, Ui_Dialog):
 
     def on_analysis_finished(self, params, stems_dir):
         self.path_stems_dir = stems_dir
-        
-        # Restaura a barra de progresso para o fim
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         self.lbl_status.setText("Status: Concluído com sucesso!")
         self.btn_load.setEnabled(True)
 
-        # Ativa os botões do player das faixas separadas
         self.btn_play_guitar.setEnabled(True)
         self.btn_stop_guitar.setEnabled(True)
         self.combo_stems.setEnabled(True)
 
-        # Extrai os dados calculados e atualiza a interface
         gate = params.get("noise_gate_threshold_db", "--")
         eq = params.get("eq", {})
-        self.lbl_gate.setText(f"Threshold do Noise Gate: {gate} dB")
-        self.lbl_eq.setText(f"Curva de EQ: B({eq.get('bass')}) | M({eq.get('mid')}) | T({eq.get('treble')})")
+        self.lbl_gate.setText(f"Threshold: {gate} dB")
+        self.lbl_eq.setText(f"EQ: B({eq.get('bass')}) | M({eq.get('mid')}) | T({eq.get('treble')})")
 
     def on_analysis_error(self, err_msg):
-        # Em caso de erro, esvazia a barra e avisa o utilizador
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self.lbl_status.setText("Status: Erro no processamento.")
         self.btn_load.setEnabled(True)
-        QMessageBox.critical(self, "Erro de Execução", err_msg)
+        QMessageBox.critical(self, "Erro", err_msg)
 
-    # ==========================================
-    # --- FUNÇÕES DE REPRODUÇÃO DE ÁUDIO ---
-    # ==========================================
-    
-    def change_volume(self, value):
-        # Converte a escala de 0-100 do Slider para 0.0-1.0 exigida pelo QAudioOutput
-        self.audio_output.setVolume(value / 100.0)
-
-    def update_duration(self, duration_ms):
-        # A API do QtMultimedia retorna a duração em milissegundos
-        if duration_ms > 0:
-            seconds = int((duration_ms / 1000) % 60)
-            minutes = int((duration_ms / (1000 * 60)) % 60)
-            
-            nome_arquivo = os.path.basename(self.path_original)
-            self.lbl_info.setText(f"Música: {nome_arquivo} | Duração: {minutes:02d}:{seconds:02d}")
-
+    # --- FUNÇÕES DE PLAYBACK INDEPENDENTES ---
     def play_original(self):
         if self.path_original:
-            self.stop_audio()
-            self.player.setSource(QUrl.fromLocalFile(self.path_original))
-            self.player.play()
+            self.player_orig.setSource(QUrl.fromLocalFile(self.path_original))
+            self.player_orig.play()
 
     def play_stem(self):
         if self.path_stems_dir:
-            # Pega o nome da faixa escolhida no menu e monta o caminho final
-            faixa_escolhida = self.combo_stems.currentText()
-            stem_file = os.path.join(self.path_stems_dir, f"{faixa_escolhida}.wav")
+            faixa = self.combo_stems.currentText()
+            stem_file = os.path.join(self.path_stems_dir, f"{faixa}.wav")
             
             if os.path.exists(stem_file):
-                self.stop_audio()
-                self.player.setSource(QUrl.fromLocalFile(stem_file))
-                self.player.play()
+                self.player_stem.setSource(QUrl.fromLocalFile(stem_file))
+                self.player_stem.play()
             else:
-                QMessageBox.warning(self, "Arquivo não encontrado", f"A faixa {faixa_escolhida}.wav não foi encontrada.")
-
-    def stop_audio(self):
-        self.player.stop()
+                QMessageBox.warning(self, "Aviso", f"A faixa {faixa}.wav não foi encontrada.")
 
 # ==========================================
-# 3. PONTO DE ENTRADA DO APLICATIVO
+# 3. PONTO DE ENTRADA
 # ==========================================
 if __name__ == "__main__":
     app = QApplication(sys.argv)

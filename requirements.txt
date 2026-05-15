@@ -66,6 +66,7 @@ standard-sunau==3.13.0
 submitit==1.5.4
 sympy==1.14.0
 threadpoolctl==3.6.0
+tinytag==2.2.1
 torch==2.11.0
 torchaudio==2.11.0
 torchcodec==0.11.1
