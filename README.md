@@ -14,20 +14,24 @@ Interface gráfica inteligente para **Tone Matching** (casamento de timbres de g
 ## Como Instalar e Rodar
 
 1. **Clone o repositório:**
-```bash
+```git
 git clone https://github.com/broken-usb/uninstrumephy.git
 cd uninstrumephy
-
 ```
 
 2. **Crie e ative seu ambiente virtual (`venv`):**
-```bash
+```python
 python -m venv .venv
-source .venv/bin/activate
+```
+```bash
+source .venv/bin/activate # Linux
+```
+```ps1
+.venv/Scripts/Activate.ps1 # Windows (PowerShell)
 ```
 
 3. **Instale as dependências:**
-```bash
+```python
 pip install --upgrade pip
 ```
 ```bash
@@ -38,6 +42,6 @@ pip install -r requirements-win.txt # Windows
 ```
 
 4. **Execute o aplicativo:**
-```bash
+```python
 python main_gui.py
 ```
