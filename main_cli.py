@@ -1,3 +1,11 @@
+'''
+Código legado para a interface de linha de comando (CLI) do projeto.
+Ele utiliza as classes AudioSeparator e AudioAnalyzer para processar um arquivo de áudio,
+isolando a faixa da guitarra e analisando-a para extrair os parâmetros necessários para o pedal ESP32(Tone Match).
+O resultado é exibido no console em formato JSON.
+'''
+
+'''
 from core.separator import AudioSeparator
 from core.analyzer import AudioAnalyzer
 import json
@@ -8,13 +16,11 @@ def main():
     
     musica_teste = "teste.mp3" 
     
-    # Etapa 1: Separação de Fontes (Machine Learning)
     caminho_guitarra = separator.extract_guitar(musica_teste)
     
     if caminho_guitarra:
         print(f"\n[Sucesso] A faixa da guitarra foi isolada em:\n{caminho_guitarra}")
         
-        # Etapa 2: Recuperação de Informação Musical (Processamento Digital de Sinais)
         parametros_pedal = analyzer.analyze_guitar(caminho_guitarra)
         
         print("\n==================================================")
@@ -25,3 +31,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+'''
