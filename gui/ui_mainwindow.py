@@ -12,58 +12,412 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 class Ui_Dialog(object):
     def setupUi(self, Dialog):
         Dialog.setObjectName("Dialog")
-        Dialog.resize(720, 540)
-        self.btn_load = QtWidgets.QPushButton(parent=Dialog)
-        self.btn_load.setGeometry(QtCore.QRect(10, 10, 212, 26))
+        Dialog.resize(860, 580)
+        Dialog.setMinimumSize(QtCore.QSize(700, 480))
+        Dialog.setStyleSheet("\n"
+"QDialog {\n"
+"    background-color: #1b1e2b;\n"
+"    font-family: \'Noto Sans\', \'Segoe UI\', sans-serif;\n"
+"    font-size: 12px;\n"
+"    color: #eff0f5;\n"
+"}\n"
+"\n"
+"QFrame#frameHeader {\n"
+"    background-color: #232637;\n"
+"    border-bottom: 1px solid #343852;\n"
+"}\n"
+"QFrame#frameLeft {\n"
+"    background-color: #232637;\n"
+"    border-right: 1px solid #343852;\n"
+"}\n"
+"QFrame#frameInfo {\n"
+"    background-color: #2a2e42;\n"
+"    border-bottom: 1px solid #343852;\n"
+"}\n"
+"QFrame#frameMetadata {\n"
+"    background-color: #232637;\n"
+"    border-bottom: 1px solid #343852;\n"
+"}\n"
+"QFrame#framePlayback {\n"
+"    background-color: #2a2e42;\n"
+"    border-bottom: 1px solid #343852;\n"
+"}\n"
+"QFrame#frameStatus {\n"
+"    background-color: #1e2130;\n"
+"    border-top: 1px solid #343852;\n"
+"}\n"
+"\n"
+"QLabel {\n"
+"    color: #eff0f5;\n"
+"    background-color: transparent;\n"
+"    border: none;\n"
+"}\n"
+"QLabel#lbl_cover {\n"
+"    background-color: #2a2e42;\n"
+"    border: 1px solid #343852;\n"
+"    border-radius: 10px;\n"
+"    color: #555d7a;\n"
+"    font-size: 36px;\n"
+"    qproperty-alignment: AlignCenter;\n"
+"}\n"
+"QLabel#lbl_filepath {\n"
+"    color: #8e94b0;\n"
+"    border: 1px solid #343852;\n"
+"    border-radius: 5px;\n"
+"    background-color: #2a2e42;\n"
+"    padding: 0 8px;\n"
+"}\n"
+"QLabel#lbl_info {\n"
+"    font-size: 13px;\n"
+"    font-weight: bold;\n"
+"    color: #eff0f5;\n"
+"}\n"
+"QLabel#lbl_metadata {\n"
+"    color: #8e94b0;\n"
+"    font-size: 11px;\n"
+"}\n"
+"QLabel#lbl_status  { color: #5b9bd5; }\n"
+"QLabel#lbl_gate    { color: #8e94b0; }\n"
+"QLabel#lbl_eq      { color: #8e94b0; }\n"
+"QLabel#lbl_section_orig,\n"
+"QLabel#lbl_section_stem {\n"
+"    color: #555d7a;\n"
+"    font-size: 10px;\n"
+"    letter-spacing: 1px;\n"
+"}\n"
+"QLabel#lbl_vol_main,\n"
+"QLabel#lbl_vol_orig,\n"
+"QLabel#lbl_vol_stem,\n"
+"QLabel#lbl_seek_orig,\n"
+"QLabel#lbl_seek_stem {\n"
+"    color: #555d7a;\n"
+"    font-size: 10px;\n"
+"}\n"
+"\n"
+"QPushButton {\n"
+"    background-color: #5b9bd5;\n"
+"    color: #ffffff;\n"
+"    border: none;\n"
+"    border-radius: 6px;\n"
+"    padding: 5px 10px;\n"
+"    font-weight: 500;\n"
+"}\n"
+"QPushButton:hover   { background-color: #72aedf; }\n"
+"QPushButton:pressed { background-color: #4a87bf; }\n"
+"QPushButton:disabled {\n"
+"    background-color: #2a2e42;\n"
+"    color: #555d7a;\n"
+"}\n"
+"\n"
+"QPushButton#btn_load { font-weight: bold; }\n"
+"\n"
+"QPushButton#btn_run_demucs {\n"
+"    background-color: #2d5540;\n"
+"    color: #eff0f5;\n"
+"    border: 1px solid #27ae60;\n"
+"}\n"
+"QPushButton#btn_run_demucs:hover   { background-color: #3a6e52; }\n"
+"QPushButton#btn_run_demucs:pressed { background-color: #244533; }\n"
+"QPushButton#btn_run_demucs:disabled {\n"
+"    background-color: #2a2e42;\n"
+"    border-color: #343852;\n"
+"    color: #555d7a;\n"
+"}\n"
+"\n"
+"QPushButton#btn_run_analysis {\n"
+"    background-color: #35358a;\n"
+"    color: #eff0f5;\n"
+"    border: 1px solid #5b9bd5;\n"
+"}\n"
+"QPushButton#btn_run_analysis:hover   { background-color: #4040a0; }\n"
+"QPushButton#btn_run_analysis:pressed { background-color: #28286e; }\n"
+"QPushButton#btn_run_analysis:disabled {\n"
+"    background-color: #2a2e42;\n"
+"    border-color: #343852;\n"
+"    color: #555d7a;\n"
+"}\n"
+"\n"
+"QPushButton#btn_play_orig,\n"
+"QPushButton#btn_stop_orig,\n"
+"QPushButton#btn_play_guitar,\n"
+"QPushButton#btn_stop_guitar {\n"
+"    border-radius: 18px;\n"
+"    min-width:  36px;\n"
+"    max-width:  36px;\n"
+"    min-height: 36px;\n"
+"    max-height: 36px;\n"
+"    font-size: 14px;\n"
+"    padding: 0;\n"
+"}\n"
+"QPushButton#btn_play_orig            { background-color: #5b9bd5; }\n"
+"QPushButton#btn_play_orig:hover      { background-color: #72aedf; }\n"
+"QPushButton#btn_play_orig:disabled   { background-color: #2a2e42; color: #555d7a; }\n"
+"QPushButton#btn_play_guitar          { background-color: #a855f7; }\n"
+"QPushButton#btn_play_guitar:hover    { background-color: #c77dff; }\n"
+"QPushButton#btn_play_guitar:disabled { background-color: #2a2e42; color: #555d7a; }\n"
+"QPushButton#btn_stop_orig,\n"
+"QPushButton#btn_stop_guitar {\n"
+"    background-color: #2a2e42;\n"
+"    border: 1px solid #343852;\n"
+"    color: #8e94b0;\n"
+"}\n"
+"QPushButton#btn_stop_orig:hover,\n"
+"QPushButton#btn_stop_guitar:hover  { background-color: #343852; }\n"
+"QPushButton#btn_stop_orig:disabled,\n"
+"QPushButton#btn_stop_guitar:disabled { color: #555d7a; }\n"
+"\n"
+"QProgressBar {\n"
+"    background-color: #343852;\n"
+"    border-radius: 3px;\n"
+"    border: none;\n"
+"    max-height: 6px;\n"
+"    text-align: center;\n"
+"    color: transparent;\n"
+"}\n"
+"QProgressBar::chunk {\n"
+"    background-color: #5b9bd5;\n"
+"    border-radius: 3px;\n"
+"}\n"
+"\n"
+"QSlider::groove:horizontal {\n"
+"    height: 4px;\n"
+"    background: #343852;\n"
+"    border-radius: 2px;\n"
+"    margin: 0;\n"
+"}\n"
+"QSlider::handle:horizontal {\n"
+"    width: 14px;\n"
+"    height: 14px;\n"
+"    margin: -5px 0;\n"
+"    background: #5b9bd5;\n"
+"    border-radius: 7px;\n"
+"    border: none;\n"
+"}\n"
+"QSlider::sub-page:horizontal {\n"
+"    background: #5b9bd5;\n"
+"    border-radius: 2px;\n"
+"}\n"
+"QSlider#slider_vol_stem::handle:horizontal,\n"
+"QSlider#slider_seek_stem::handle:horizontal  { background: #a855f7; }\n"
+"QSlider#slider_vol_stem::sub-page:horizontal,\n"
+"QSlider#slider_seek_stem::sub-page:horizontal { background: #a855f7; }\n"
+"QSlider:disabled::handle:horizontal    { background: #343852; }\n"
+"QSlider:disabled::sub-page:horizontal  { background: #343852; }\n"
+"\n"
+"QComboBox {\n"
+"    background-color: #232637;\n"
+"    color: #eff0f5;\n"
+"    border: 1px solid #343852;\n"
+"    border-radius: 5px;\n"
+"    padding: 3px 8px;\n"
+"    min-height: 24px;\n"
+"}\n"
+"QComboBox:hover   { border-color: #5b9bd5; }\n"
+"QComboBox:disabled { color: #555d7a; }\n"
+"QComboBox::drop-down { border: none; width: 20px; }\n"
+"QComboBox QAbstractItemView {\n"
+"    background-color: #2a2e42;\n"
+"    color: #eff0f5;\n"
+"    border: 1px solid #343852;\n"
+"    selection-background-color: #5b9bd5;\n"
+"    outline: none;\n"
+"}\n"
+"\n"
+"QFrame#lineSep,\n"
+"QFrame#vlineSep,\n"
+"QFrame#vlineStatus1,\n"
+"QFrame#vlineStatus2 {\n"
+"    color: #343852;\n"
+"    background-color: #343852;\n"
+"}\n"
+"   ")
+        self.mainLayout = QtWidgets.QVBoxLayout(Dialog)
+        self.mainLayout.setContentsMargins(0, 0, 0, 0)
+        self.mainLayout.setSpacing(0)
+        self.mainLayout.setObjectName("mainLayout")
+        self.frameHeader = QtWidgets.QFrame(parent=Dialog)
+        self.frameHeader.setMinimumSize(QtCore.QSize(0, 52))
+        self.frameHeader.setMaximumSize(QtCore.QSize(16777215, 52))
+        self.frameHeader.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self.frameHeader.setObjectName("frameHeader")
+        self.headerLayout = QtWidgets.QHBoxLayout(self.frameHeader)
+        self.headerLayout.setContentsMargins(16, 10, 16, 10)
+        self.headerLayout.setSpacing(10)
+        self.headerLayout.setObjectName("headerLayout")
+        self.btn_load = QtWidgets.QPushButton(parent=self.frameHeader)
+        self.btn_load.setMaximumSize(QtCore.QSize(240, 16777215))
         self.btn_load.setObjectName("btn_load")
-        self.progress_bar = QtWidgets.QProgressBar(parent=Dialog)
-        self.progress_bar.setGeometry(QtCore.QRect(10, 40, 211, 26))
+        self.headerLayout.addWidget(self.btn_load)
+        self.progress_bar = QtWidgets.QProgressBar(parent=self.frameHeader)
+        self.progress_bar.setMinimumSize(QtCore.QSize(80, 0))
+        self.progress_bar.setMaximumSize(QtCore.QSize(120, 6))
         self.progress_bar.setProperty("value", 0)
+        self.progress_bar.setTextVisible(False)
         self.progress_bar.setObjectName("progress_bar")
-        self.lbl_filepath = QtWidgets.QLabel(parent=Dialog)
-        self.lbl_filepath.setGeometry(QtCore.QRect(230, 10, 481, 18))
-        self.lbl_filepath.setFrameShape(QtWidgets.QFrame.Shape.Box)
+        self.headerLayout.addWidget(self.progress_bar)
+        self.lbl_filepath = QtWidgets.QLabel(parent=self.frameHeader)
+        self.lbl_filepath.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeading|QtCore.Qt.AlignmentFlag.AlignLeft|QtCore.Qt.AlignmentFlag.AlignVCenter)
         self.lbl_filepath.setObjectName("lbl_filepath")
-        self.lbl_gate = QtWidgets.QLabel(parent=Dialog)
-        self.lbl_gate.setGeometry(QtCore.QRect(10, 480, 701, 18))
-        self.lbl_gate.setFrameShape(QtWidgets.QFrame.Shape.Box)
-        self.lbl_gate.setObjectName("lbl_gate")
-        self.lbl_eq = QtWidgets.QLabel(parent=Dialog)
-        self.lbl_eq.setGeometry(QtCore.QRect(10, 510, 701, 18))
-        self.lbl_eq.setFrameShape(QtWidgets.QFrame.Shape.Box)
-        self.lbl_eq.setObjectName("lbl_eq")
-        self.lbl_status = QtWidgets.QLabel(parent=Dialog)
-        self.lbl_status.setGeometry(QtCore.QRect(10, 450, 701, 18))
-        self.lbl_status.setFrameShape(QtWidgets.QFrame.Shape.Box)
-        self.lbl_status.setObjectName("lbl_status")
-        self.btn_play_orig = QtWidgets.QPushButton(parent=Dialog)
-        self.btn_play_orig.setEnabled(False)
-        self.btn_play_orig.setGeometry(QtCore.QRect(230, 310, 171, 26))
-        self.btn_play_orig.setObjectName("btn_play_orig")
-        self.btn_stop_orig = QtWidgets.QPushButton(parent=Dialog)
-        self.btn_stop_orig.setEnabled(False)
-        self.btn_stop_orig.setGeometry(QtCore.QRect(230, 340, 171, 26))
-        self.btn_stop_orig.setObjectName("btn_stop_orig")
-        self.btn_stop_guitar = QtWidgets.QPushButton(parent=Dialog)
-        self.btn_stop_guitar.setEnabled(False)
-        self.btn_stop_guitar.setGeometry(QtCore.QRect(600, 340, 101, 26))
-        self.btn_stop_guitar.setObjectName("btn_stop_guitar")
-        self.btn_play_guitar = QtWidgets.QPushButton(parent=Dialog)
-        self.btn_play_guitar.setEnabled(False)
-        self.btn_play_guitar.setGeometry(QtCore.QRect(530, 310, 171, 26))
-        self.btn_play_guitar.setObjectName("btn_play_guitar")
-        self.lbl_info = QtWidgets.QLabel(parent=Dialog)
-        self.lbl_info.setGeometry(QtCore.QRect(230, 40, 481, 81))
-        self.lbl_info.setFrameShape(QtWidgets.QFrame.Shape.Box)
-        self.lbl_info.setObjectName("lbl_info")
-        self.slider_volume = QtWidgets.QSlider(parent=Dialog)
-        self.slider_volume.setGeometry(QtCore.QRect(9, 70, 211, 20))
+        self.headerLayout.addWidget(self.lbl_filepath)
+        self.mainLayout.addWidget(self.frameHeader)
+        self.bodyLayout = QtWidgets.QHBoxLayout()
+        self.bodyLayout.setContentsMargins(0, 0, 0, 0)
+        self.bodyLayout.setSpacing(0)
+        self.bodyLayout.setObjectName("bodyLayout")
+        self.frameLeft = QtWidgets.QFrame(parent=Dialog)
+        self.frameLeft.setMinimumSize(QtCore.QSize(200, 0))
+        self.frameLeft.setMaximumSize(QtCore.QSize(260, 16777215))
+        self.frameLeft.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self.frameLeft.setObjectName("frameLeft")
+        self.leftLayout = QtWidgets.QVBoxLayout(self.frameLeft)
+        self.leftLayout.setContentsMargins(16, 16, 16, 16)
+        self.leftLayout.setSpacing(12)
+        self.leftLayout.setObjectName("leftLayout")
+        self.lbl_cover = QtWidgets.QLabel(parent=self.frameLeft)
+        self.lbl_cover.setMinimumSize(QtCore.QSize(0, 160))
+        self.lbl_cover.setMaximumSize(QtCore.QSize(16777215, 220))
+        self.lbl_cover.setScaledContents(True)
+        self.lbl_cover.setAlignment(QtCore.Qt.AlignmentFlag.AlignCenter)
+        self.lbl_cover.setObjectName("lbl_cover")
+        self.leftLayout.addWidget(self.lbl_cover)
+        self.lbl_vol_main = QtWidgets.QLabel(parent=self.frameLeft)
+        self.lbl_vol_main.setObjectName("lbl_vol_main")
+        self.leftLayout.addWidget(self.lbl_vol_main)
+        self.slider_volume = QtWidgets.QSlider(parent=self.frameLeft)
+        self.slider_volume.setEnabled(False)
         self.slider_volume.setMaximum(110)
-        self.slider_volume.setProperty("value", 70)
+        self.slider_volume.setProperty("value", 110)
         self.slider_volume.setOrientation(QtCore.Qt.Orientation.Horizontal)
         self.slider_volume.setObjectName("slider_volume")
-        self.combo_stems = QtWidgets.QComboBox(parent=Dialog)
-        self.combo_stems.setGeometry(QtCore.QRect(530, 340, 71, 26))
+        self.leftLayout.addWidget(self.slider_volume)
+        self.lineSep = QtWidgets.QFrame(parent=self.frameLeft)
+        self.lineSep.setFrameShape(QtWidgets.QFrame.Shape.HLine)
+        self.lineSep.setFrameShadow(QtWidgets.QFrame.Shadow.Plain)
+        self.lineSep.setObjectName("lineSep")
+        self.leftLayout.addWidget(self.lineSep)
+        self.btn_run_demucs = QtWidgets.QPushButton(parent=self.frameLeft)
+        self.btn_run_demucs.setEnabled(False)
+        self.btn_run_demucs.setObjectName("btn_run_demucs")
+        self.leftLayout.addWidget(self.btn_run_demucs)
+        self.btn_run_analysis = QtWidgets.QPushButton(parent=self.frameLeft)
+        self.btn_run_analysis.setEnabled(False)
+        self.btn_run_analysis.setObjectName("btn_run_analysis")
+        self.leftLayout.addWidget(self.btn_run_analysis)
+        spacerItem = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Expanding)
+        self.leftLayout.addItem(spacerItem)
+        self.bodyLayout.addWidget(self.frameLeft)
+        self.rightLayout = QtWidgets.QVBoxLayout()
+        self.rightLayout.setContentsMargins(0, 0, 0, 0)
+        self.rightLayout.setSpacing(0)
+        self.rightLayout.setObjectName("rightLayout")
+        self.frameInfo = QtWidgets.QFrame(parent=Dialog)
+        self.frameInfo.setMinimumSize(QtCore.QSize(0, 105))
+        self.frameInfo.setMaximumSize(QtCore.QSize(16777215, 105))
+        self.frameInfo.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self.frameInfo.setObjectName("frameInfo")
+        self.infoLayout = QtWidgets.QVBoxLayout(self.frameInfo)
+        self.infoLayout.setContentsMargins(14, 10, 14, 10)
+        self.infoLayout.setSpacing(6)
+        self.infoLayout.setObjectName("infoLayout")
+        self.lbl_info = QtWidgets.QLabel(parent=self.frameInfo)
+        self.lbl_info.setObjectName("lbl_info")
+        self.infoLayout.addWidget(self.lbl_info)
+        self.seekOrigLayout = QtWidgets.QHBoxLayout()
+        self.seekOrigLayout.setSpacing(6)
+        self.seekOrigLayout.setObjectName("seekOrigLayout")
+        self.lbl_seek_orig = QtWidgets.QLabel(parent=self.frameInfo)
+        self.lbl_seek_orig.setMinimumSize(QtCore.QSize(30, 0))
+        self.lbl_seek_orig.setObjectName("lbl_seek_orig")
+        self.seekOrigLayout.addWidget(self.lbl_seek_orig)
+        self.slider_seek_orig = QtWidgets.QSlider(parent=self.frameInfo)
+        self.slider_seek_orig.setOrientation(QtCore.Qt.Orientation.Horizontal)
+        self.slider_seek_orig.setObjectName("slider_seek_orig")
+        self.seekOrigLayout.addWidget(self.slider_seek_orig)
+        self.infoLayout.addLayout(self.seekOrigLayout)
+        self.seekStemLayout = QtWidgets.QHBoxLayout()
+        self.seekStemLayout.setSpacing(6)
+        self.seekStemLayout.setObjectName("seekStemLayout")
+        self.lbl_seek_stem = QtWidgets.QLabel(parent=self.frameInfo)
+        self.lbl_seek_stem.setMinimumSize(QtCore.QSize(30, 0))
+        self.lbl_seek_stem.setObjectName("lbl_seek_stem")
+        self.seekStemLayout.addWidget(self.lbl_seek_stem)
+        self.slider_seek_stem = QtWidgets.QSlider(parent=self.frameInfo)
+        self.slider_seek_stem.setOrientation(QtCore.Qt.Orientation.Horizontal)
+        self.slider_seek_stem.setObjectName("slider_seek_stem")
+        self.seekStemLayout.addWidget(self.slider_seek_stem)
+        self.infoLayout.addLayout(self.seekStemLayout)
+        self.rightLayout.addWidget(self.frameInfo)
+        self.frameMetadata = QtWidgets.QFrame(parent=Dialog)
+        sizePolicy = QtWidgets.QSizePolicy(QtWidgets.QSizePolicy.Policy.Preferred, QtWidgets.QSizePolicy.Policy.Expanding)
+        sizePolicy.setHorizontalStretch(0)
+        sizePolicy.setVerticalStretch(1)
+        sizePolicy.setHeightForWidth(self.frameMetadata.sizePolicy().hasHeightForWidth())
+        self.frameMetadata.setSizePolicy(sizePolicy)
+        self.frameMetadata.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self.frameMetadata.setObjectName("frameMetadata")
+        self.metadataLayout = QtWidgets.QVBoxLayout(self.frameMetadata)
+        self.metadataLayout.setContentsMargins(14, 10, 14, 10)
+        self.metadataLayout.setObjectName("metadataLayout")
+        self.lbl_metadata = QtWidgets.QLabel(parent=self.frameMetadata)
+        self.lbl_metadata.setAlignment(QtCore.Qt.AlignmentFlag.AlignLeading|QtCore.Qt.AlignmentFlag.AlignLeft|QtCore.Qt.AlignmentFlag.AlignTop)
+        self.lbl_metadata.setWordWrap(True)
+        self.lbl_metadata.setObjectName("lbl_metadata")
+        self.metadataLayout.addWidget(self.lbl_metadata)
+        self.rightLayout.addWidget(self.frameMetadata)
+        self.framePlayback = QtWidgets.QFrame(parent=Dialog)
+        self.framePlayback.setMinimumSize(QtCore.QSize(0, 88))
+        self.framePlayback.setMaximumSize(QtCore.QSize(16777215, 88))
+        self.framePlayback.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self.framePlayback.setObjectName("framePlayback")
+        self.playbackLayout = QtWidgets.QHBoxLayout(self.framePlayback)
+        self.playbackLayout.setContentsMargins(14, 10, 14, 10)
+        self.playbackLayout.setSpacing(16)
+        self.playbackLayout.setObjectName("playbackLayout")
+        self.origColLayout = QtWidgets.QVBoxLayout()
+        self.origColLayout.setSpacing(6)
+        self.origColLayout.setObjectName("origColLayout")
+        self.lbl_section_orig = QtWidgets.QLabel(parent=self.framePlayback)
+        self.lbl_section_orig.setObjectName("lbl_section_orig")
+        self.origColLayout.addWidget(self.lbl_section_orig)
+        self.origControlsLayout = QtWidgets.QHBoxLayout()
+        self.origControlsLayout.setSpacing(6)
+        self.origControlsLayout.setObjectName("origControlsLayout")
+        self.btn_play_orig = QtWidgets.QPushButton(parent=self.framePlayback)
+        self.btn_play_orig.setEnabled(False)
+        self.btn_play_orig.setObjectName("btn_play_orig")
+        self.origControlsLayout.addWidget(self.btn_play_orig)
+        self.btn_stop_orig = QtWidgets.QPushButton(parent=self.framePlayback)
+        self.btn_stop_orig.setEnabled(False)
+        self.btn_stop_orig.setObjectName("btn_stop_orig")
+        self.origControlsLayout.addWidget(self.btn_stop_orig)
+        self.lbl_vol_orig = QtWidgets.QLabel(parent=self.framePlayback)
+        self.lbl_vol_orig.setObjectName("lbl_vol_orig")
+        self.origControlsLayout.addWidget(self.lbl_vol_orig)
+        self.slider_vol_orig = QtWidgets.QSlider(parent=self.framePlayback)
+        self.slider_vol_orig.setMinimumSize(QtCore.QSize(70, 0))
+        self.slider_vol_orig.setProperty("value", 50)
+        self.slider_vol_orig.setOrientation(QtCore.Qt.Orientation.Horizontal)
+        self.slider_vol_orig.setObjectName("slider_vol_orig")
+        self.origControlsLayout.addWidget(self.slider_vol_orig)
+        self.origColLayout.addLayout(self.origControlsLayout)
+        self.playbackLayout.addLayout(self.origColLayout)
+        self.vlineSep = QtWidgets.QFrame(parent=self.framePlayback)
+        self.vlineSep.setMaximumSize(QtCore.QSize(1, 16777215))
+        self.vlineSep.setFrameShape(QtWidgets.QFrame.Shape.VLine)
+        self.vlineSep.setFrameShadow(QtWidgets.QFrame.Shadow.Plain)
+        self.vlineSep.setObjectName("vlineSep")
+        self.playbackLayout.addWidget(self.vlineSep)
+        self.stemColLayout = QtWidgets.QVBoxLayout()
+        self.stemColLayout.setSpacing(6)
+        self.stemColLayout.setObjectName("stemColLayout")
+        self.stemHeaderLayout = QtWidgets.QHBoxLayout()
+        self.stemHeaderLayout.setSpacing(8)
+        self.stemHeaderLayout.setObjectName("stemHeaderLayout")
+        self.lbl_section_stem = QtWidgets.QLabel(parent=self.framePlayback)
+        self.lbl_section_stem.setObjectName("lbl_section_stem")
+        self.stemHeaderLayout.addWidget(self.lbl_section_stem)
+        self.combo_stems = QtWidgets.QComboBox(parent=self.framePlayback)
+        self.combo_stems.setEnabled(False)
         self.combo_stems.setObjectName("combo_stems")
         self.combo_stems.addItem("")
         self.combo_stems.addItem("")
@@ -71,68 +425,100 @@ class Ui_Dialog(object):
         self.combo_stems.addItem("")
         self.combo_stems.addItem("")
         self.combo_stems.addItem("")
-        self.lbl_cover = QtWidgets.QLabel(parent=Dialog)
-        self.lbl_cover.setGeometry(QtCore.QRect(230, 130, 150, 150))
-        self.lbl_cover.setFrameShape(QtWidgets.QFrame.Shape.Box)
-        self.lbl_cover.setText("")
-        self.lbl_cover.setScaledContents(True)
-        self.lbl_cover.setObjectName("lbl_cover")
-        self.lbl_metadata = QtWidgets.QLabel(parent=Dialog)
-        self.lbl_metadata.setGeometry(QtCore.QRect(390, 130, 311, 151))
-        self.lbl_metadata.setFrameShape(QtWidgets.QFrame.Shape.Box)
-        self.lbl_metadata.setText("")
-        self.lbl_metadata.setObjectName("lbl_metadata")
-        self.slider_seek_orig = QtWidgets.QSlider(parent=Dialog)
-        self.slider_seek_orig.setGeometry(QtCore.QRect(230, 50, 471, 16))
-        self.slider_seek_orig.setOrientation(QtCore.Qt.Orientation.Horizontal)
-        self.slider_seek_orig.setObjectName("slider_seek_orig")
-        self.slider_vol_orig = QtWidgets.QSlider(parent=Dialog)
-        self.slider_vol_orig.setGeometry(QtCore.QRect(230, 290, 171, 16))
-        self.slider_vol_orig.setProperty("value", 50)
-        self.slider_vol_orig.setOrientation(QtCore.Qt.Orientation.Horizontal)
-        self.slider_vol_orig.setObjectName("slider_vol_orig")
-        self.slider_seek_stem = QtWidgets.QSlider(parent=Dialog)
-        self.slider_seek_stem.setGeometry(QtCore.QRect(230, 90, 471, 16))
-        self.slider_seek_stem.setOrientation(QtCore.Qt.Orientation.Horizontal)
-        self.slider_seek_stem.setObjectName("slider_seek_stem")
-        self.slider_vol_stem = QtWidgets.QSlider(parent=Dialog)
-        self.slider_vol_stem.setGeometry(QtCore.QRect(530, 290, 171, 16))
+        self.stemHeaderLayout.addWidget(self.combo_stems)
+        self.stemColLayout.addLayout(self.stemHeaderLayout)
+        self.stemControlsLayout = QtWidgets.QHBoxLayout()
+        self.stemControlsLayout.setSpacing(6)
+        self.stemControlsLayout.setObjectName("stemControlsLayout")
+        self.btn_play_guitar = QtWidgets.QPushButton(parent=self.framePlayback)
+        self.btn_play_guitar.setEnabled(False)
+        self.btn_play_guitar.setObjectName("btn_play_guitar")
+        self.stemControlsLayout.addWidget(self.btn_play_guitar)
+        self.btn_stop_guitar = QtWidgets.QPushButton(parent=self.framePlayback)
+        self.btn_stop_guitar.setEnabled(False)
+        self.btn_stop_guitar.setObjectName("btn_stop_guitar")
+        self.stemControlsLayout.addWidget(self.btn_stop_guitar)
+        self.lbl_vol_stem = QtWidgets.QLabel(parent=self.framePlayback)
+        self.lbl_vol_stem.setObjectName("lbl_vol_stem")
+        self.stemControlsLayout.addWidget(self.lbl_vol_stem)
+        self.slider_vol_stem = QtWidgets.QSlider(parent=self.framePlayback)
+        self.slider_vol_stem.setMinimumSize(QtCore.QSize(70, 0))
         self.slider_vol_stem.setProperty("value", 50)
         self.slider_vol_stem.setOrientation(QtCore.Qt.Orientation.Horizontal)
         self.slider_vol_stem.setObjectName("slider_vol_stem")
-        self.btn_run_demucs = QtWidgets.QPushButton(parent=Dialog)
-        self.btn_run_demucs.setEnabled(False)
-        self.btn_run_demucs.setGeometry(QtCore.QRect(10, 410, 201, 26))
-        self.btn_run_demucs.setObjectName("btn_run_demucs")
-        self.btn_run_analysis = QtWidgets.QPushButton(parent=Dialog)
-        self.btn_run_analysis.setEnabled(False)
-        self.btn_run_analysis.setGeometry(QtCore.QRect(220, 410, 201, 26))
-        self.btn_run_analysis.setObjectName("btn_run_analysis")
+        self.stemControlsLayout.addWidget(self.slider_vol_stem)
+        self.stemColLayout.addLayout(self.stemControlsLayout)
+        self.playbackLayout.addLayout(self.stemColLayout)
+        self.rightLayout.addWidget(self.framePlayback)
+        self.bodyLayout.addLayout(self.rightLayout)
+        self.mainLayout.addLayout(self.bodyLayout)
+        self.frameStatus = QtWidgets.QFrame(parent=Dialog)
+        self.frameStatus.setMinimumSize(QtCore.QSize(0, 28))
+        self.frameStatus.setMaximumSize(QtCore.QSize(16777215, 28))
+        self.frameStatus.setFrameShape(QtWidgets.QFrame.Shape.NoFrame)
+        self.frameStatus.setObjectName("frameStatus")
+        self.statusLayout = QtWidgets.QHBoxLayout(self.frameStatus)
+        self.statusLayout.setContentsMargins(12, 0, 12, 0)
+        self.statusLayout.setSpacing(14)
+        self.statusLayout.setObjectName("statusLayout")
+        self.lbl_status = QtWidgets.QLabel(parent=self.frameStatus)
+        self.lbl_status.setObjectName("lbl_status")
+        self.statusLayout.addWidget(self.lbl_status)
+        self.vlineStatus1 = QtWidgets.QFrame(parent=self.frameStatus)
+        self.vlineStatus1.setMaximumSize(QtCore.QSize(1, 14))
+        self.vlineStatus1.setFrameShape(QtWidgets.QFrame.Shape.VLine)
+        self.vlineStatus1.setFrameShadow(QtWidgets.QFrame.Shadow.Plain)
+        self.vlineStatus1.setObjectName("vlineStatus1")
+        self.statusLayout.addWidget(self.vlineStatus1)
+        self.lbl_gate = QtWidgets.QLabel(parent=self.frameStatus)
+        self.lbl_gate.setObjectName("lbl_gate")
+        self.statusLayout.addWidget(self.lbl_gate)
+        self.vlineStatus2 = QtWidgets.QFrame(parent=self.frameStatus)
+        self.vlineStatus2.setMaximumSize(QtCore.QSize(1, 14))
+        self.vlineStatus2.setFrameShape(QtWidgets.QFrame.Shape.VLine)
+        self.vlineStatus2.setFrameShadow(QtWidgets.QFrame.Shadow.Plain)
+        self.vlineStatus2.setObjectName("vlineStatus2")
+        self.statusLayout.addWidget(self.vlineStatus2)
+        self.lbl_eq = QtWidgets.QLabel(parent=self.frameStatus)
+        self.lbl_eq.setObjectName("lbl_eq")
+        self.statusLayout.addWidget(self.lbl_eq)
+        spacerItem1 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Policy.Expanding, QtWidgets.QSizePolicy.Policy.Minimum)
+        self.statusLayout.addItem(spacerItem1)
+        self.mainLayout.addWidget(self.frameStatus)
 
         self.retranslateUi(Dialog)
         QtCore.QMetaObject.connectSlotsByName(Dialog)
 
     def retranslateUi(self, Dialog):
         _translate = QtCore.QCoreApplication.translate
-        Dialog.setWindowTitle(_translate("Dialog", "Dialog"))
-        self.btn_load.setText(_translate("Dialog", "Carregar Música de Referência..."))
+        Dialog.setWindowTitle(_translate("Dialog", "Tone Matcher"))
+        self.btn_load.setText(_translate("Dialog", "＋  Carregar Música de Referência…"))
         self.lbl_filepath.setText(_translate("Dialog", "Nenhum arquivo selecionado."))
-        self.lbl_gate.setText(_translate("Dialog", "Threshold do Noise Gate: -- dB"))
-        self.lbl_eq.setText(_translate("Dialog", "Curva de EQ Calculada: Bass (--) | Mid (--) | Treble (--)"))
-        self.lbl_status.setText(_translate("Dialog", "Status: Aguardando..."))
-        self.btn_play_orig.setText(_translate("Dialog", "▶ Tocar Original"))
-        self.btn_stop_orig.setText(_translate("Dialog", "⏹ Parar"))
-        self.btn_stop_guitar.setText(_translate("Dialog", "⏹ Parar"))
-        self.btn_play_guitar.setText(_translate("Dialog", "▶ Tocar Faixa Isolada"))
-        self.lbl_info.setText(_translate("Dialog", "Música: Nenhuma | Duração: 00:00"))
+        self.lbl_cover.setText(_translate("Dialog", "♪"))
+        self.lbl_vol_main.setText(_translate("Dialog", "🔊  Volume"))
+        self.btn_run_demucs.setText(_translate("Dialog", "⚙  Separar Faixas  (Demucs)"))
+        self.btn_run_analysis.setText(_translate("Dialog", "📊  Tone Matching  (Librosa)"))
+        self.lbl_info.setText(_translate("Dialog", "Nenhuma música carregada  |  00:00"))
+        self.lbl_seek_orig.setText(_translate("Dialog", "Orig"))
+        self.lbl_seek_stem.setText(_translate("Dialog", "Stem"))
+        self.lbl_metadata.setText(_translate("Dialog", "Nenhuma informação disponível."))
+        self.lbl_section_orig.setText(_translate("Dialog", "ORIGINAL"))
+        self.btn_play_orig.setText(_translate("Dialog", "▶"))
+        self.btn_stop_orig.setText(_translate("Dialog", "⏹"))
+        self.lbl_vol_orig.setText(_translate("Dialog", "Vol"))
+        self.lbl_section_stem.setText(_translate("Dialog", "FAIXA ISOLADA"))
         self.combo_stems.setItemText(0, _translate("Dialog", "guitar"))
         self.combo_stems.setItemText(1, _translate("Dialog", "bass"))
         self.combo_stems.setItemText(2, _translate("Dialog", "drums"))
         self.combo_stems.setItemText(3, _translate("Dialog", "piano"))
         self.combo_stems.setItemText(4, _translate("Dialog", "vocals"))
         self.combo_stems.setItemText(5, _translate("Dialog", "other"))
-        self.btn_run_demucs.setText(_translate("Dialog", "Separar Faixas (IA Demucs)"))
-        self.btn_run_analysis.setText(_translate("Dialog", "Extrair Tone Matching (Librosa)"))
+        self.btn_play_guitar.setText(_translate("Dialog", "▶"))
+        self.btn_stop_guitar.setText(_translate("Dialog", "⏹"))
+        self.lbl_vol_stem.setText(_translate("Dialog", "Vol"))
+        self.lbl_status.setText(_translate("Dialog", "● Status: Aguardando…"))
+        self.lbl_gate.setText(_translate("Dialog", "Noise Gate: -- dB"))
+        self.lbl_eq.setText(_translate("Dialog", "EQ — Bass: --  |  Mid: --  |  Treble: --"))
 
 
 if __name__ == "__main__":

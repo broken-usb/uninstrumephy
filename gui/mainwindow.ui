@@ -6,367 +6,964 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>720</width>
-    <height>540</height>
+    <width>860</width>
+    <height>580</height>
    </rect>
   </property>
-  <property name="windowTitle">
-   <string>Dialog</string>
+  <property name="minimumSize">
+   <size>
+    <width>700</width>
+    <height>480</height>
+   </size>
   </property>
-  <widget class="QPushButton" name="btn_load">
-   <property name="geometry">
-    <rect>
-     <x>10</x>
-     <y>10</y>
-     <width>212</width>
-     <height>26</height>
-    </rect>
-   </property>
-   <property name="text">
-    <string>Carregar Música de Referência...</string>
-   </property>
-  </widget>
-  <widget class="QProgressBar" name="progress_bar">
-   <property name="geometry">
-    <rect>
-     <x>10</x>
-     <y>40</y>
-     <width>211</width>
-     <height>26</height>
-    </rect>
-   </property>
-   <property name="value">
+  <property name="windowTitle">
+   <string>Tone Matcher</string>
+  </property>
+  <property name="styleSheet">
+   <string notr="true">
+QDialog {
+    background-color: #1b1e2b;
+    font-family: 'Noto Sans', 'Segoe UI', sans-serif;
+    font-size: 12px;
+    color: #eff0f5;
+}
+
+QFrame#frameHeader {
+    background-color: #232637;
+    border-bottom: 1px solid #343852;
+}
+QFrame#frameLeft {
+    background-color: #232637;
+    border-right: 1px solid #343852;
+}
+QFrame#frameInfo {
+    background-color: #2a2e42;
+    border-bottom: 1px solid #343852;
+}
+QFrame#frameMetadata {
+    background-color: #232637;
+    border-bottom: 1px solid #343852;
+}
+QFrame#framePlayback {
+    background-color: #2a2e42;
+    border-bottom: 1px solid #343852;
+}
+QFrame#frameStatus {
+    background-color: #1e2130;
+    border-top: 1px solid #343852;
+}
+
+QLabel {
+    color: #eff0f5;
+    background-color: transparent;
+    border: none;
+}
+QLabel#lbl_cover {
+    background-color: #2a2e42;
+    border: 1px solid #343852;
+    border-radius: 10px;
+    color: #555d7a;
+    font-size: 36px;
+    qproperty-alignment: AlignCenter;
+}
+QLabel#lbl_filepath {
+    color: #8e94b0;
+    border: 1px solid #343852;
+    border-radius: 5px;
+    background-color: #2a2e42;
+    padding: 0 8px;
+}
+QLabel#lbl_info {
+    font-size: 13px;
+    font-weight: bold;
+    color: #eff0f5;
+}
+QLabel#lbl_metadata {
+    color: #8e94b0;
+    font-size: 11px;
+}
+QLabel#lbl_status  { color: #5b9bd5; }
+QLabel#lbl_gate    { color: #8e94b0; }
+QLabel#lbl_eq      { color: #8e94b0; }
+QLabel#lbl_section_orig,
+QLabel#lbl_section_stem {
+    color: #555d7a;
+    font-size: 10px;
+    letter-spacing: 1px;
+}
+QLabel#lbl_vol_main,
+QLabel#lbl_vol_orig,
+QLabel#lbl_vol_stem,
+QLabel#lbl_seek_orig,
+QLabel#lbl_seek_stem {
+    color: #555d7a;
+    font-size: 10px;
+}
+
+QPushButton {
+    background-color: #5b9bd5;
+    color: #ffffff;
+    border: none;
+    border-radius: 6px;
+    padding: 5px 10px;
+    font-weight: 500;
+}
+QPushButton:hover   { background-color: #72aedf; }
+QPushButton:pressed { background-color: #4a87bf; }
+QPushButton:disabled {
+    background-color: #2a2e42;
+    color: #555d7a;
+}
+
+QPushButton#btn_load { font-weight: bold; }
+
+QPushButton#btn_run_demucs {
+    background-color: #2d5540;
+    color: #eff0f5;
+    border: 1px solid #27ae60;
+}
+QPushButton#btn_run_demucs:hover   { background-color: #3a6e52; }
+QPushButton#btn_run_demucs:pressed { background-color: #244533; }
+QPushButton#btn_run_demucs:disabled {
+    background-color: #2a2e42;
+    border-color: #343852;
+    color: #555d7a;
+}
+
+QPushButton#btn_run_analysis {
+    background-color: #35358a;
+    color: #eff0f5;
+    border: 1px solid #5b9bd5;
+}
+QPushButton#btn_run_analysis:hover   { background-color: #4040a0; }
+QPushButton#btn_run_analysis:pressed { background-color: #28286e; }
+QPushButton#btn_run_analysis:disabled {
+    background-color: #2a2e42;
+    border-color: #343852;
+    color: #555d7a;
+}
+
+QPushButton#btn_play_orig,
+QPushButton#btn_stop_orig,
+QPushButton#btn_play_guitar,
+QPushButton#btn_stop_guitar {
+    border-radius: 18px;
+    min-width:  36px;
+    max-width:  36px;
+    min-height: 36px;
+    max-height: 36px;
+    font-size: 14px;
+    padding: 0;
+}
+QPushButton#btn_play_orig            { background-color: #5b9bd5; }
+QPushButton#btn_play_orig:hover      { background-color: #72aedf; }
+QPushButton#btn_play_orig:disabled   { background-color: #2a2e42; color: #555d7a; }
+QPushButton#btn_play_guitar          { background-color: #a855f7; }
+QPushButton#btn_play_guitar:hover    { background-color: #c77dff; }
+QPushButton#btn_play_guitar:disabled { background-color: #2a2e42; color: #555d7a; }
+QPushButton#btn_stop_orig,
+QPushButton#btn_stop_guitar {
+    background-color: #2a2e42;
+    border: 1px solid #343852;
+    color: #8e94b0;
+}
+QPushButton#btn_stop_orig:hover,
+QPushButton#btn_stop_guitar:hover  { background-color: #343852; }
+QPushButton#btn_stop_orig:disabled,
+QPushButton#btn_stop_guitar:disabled { color: #555d7a; }
+
+QProgressBar {
+    background-color: #343852;
+    border-radius: 3px;
+    border: none;
+    max-height: 6px;
+    text-align: center;
+    color: transparent;
+}
+QProgressBar::chunk {
+    background-color: #5b9bd5;
+    border-radius: 3px;
+}
+
+QSlider::groove:horizontal {
+    height: 4px;
+    background: #343852;
+    border-radius: 2px;
+    margin: 0;
+}
+QSlider::handle:horizontal {
+    width: 14px;
+    height: 14px;
+    margin: -5px 0;
+    background: #5b9bd5;
+    border-radius: 7px;
+    border: none;
+}
+QSlider::sub-page:horizontal {
+    background: #5b9bd5;
+    border-radius: 2px;
+}
+QSlider#slider_vol_stem::handle:horizontal,
+QSlider#slider_seek_stem::handle:horizontal  { background: #a855f7; }
+QSlider#slider_vol_stem::sub-page:horizontal,
+QSlider#slider_seek_stem::sub-page:horizontal { background: #a855f7; }
+QSlider:disabled::handle:horizontal    { background: #343852; }
+QSlider:disabled::sub-page:horizontal  { background: #343852; }
+
+QComboBox {
+    background-color: #232637;
+    color: #eff0f5;
+    border: 1px solid #343852;
+    border-radius: 5px;
+    padding: 3px 8px;
+    min-height: 24px;
+}
+QComboBox:hover   { border-color: #5b9bd5; }
+QComboBox:disabled { color: #555d7a; }
+QComboBox::drop-down { border: none; width: 20px; }
+QComboBox QAbstractItemView {
+    background-color: #2a2e42;
+    color: #eff0f5;
+    border: 1px solid #343852;
+    selection-background-color: #5b9bd5;
+    outline: none;
+}
+
+QFrame#lineSep,
+QFrame#vlineSep,
+QFrame#vlineStatus1,
+QFrame#vlineStatus2 {
+    color: #343852;
+    background-color: #343852;
+}
+   </string>
+  </property>
+  <layout class="QVBoxLayout" name="mainLayout">
+   <property name="spacing">
     <number>0</number>
    </property>
-  </widget>
-  <widget class="QLabel" name="lbl_filepath">
-   <property name="geometry">
-    <rect>
-     <x>230</x>
-     <y>10</y>
-     <width>481</width>
-     <height>18</height>
-    </rect>
+   <property name="leftMargin">
+    <number>0</number>
    </property>
-   <property name="frameShape">
-    <enum>QFrame::Shape::Box</enum>
+   <property name="topMargin">
+    <number>0</number>
    </property>
-   <property name="text">
-    <string>Nenhum arquivo selecionado.</string>
+   <property name="rightMargin">
+    <number>0</number>
    </property>
-  </widget>
-  <widget class="QLabel" name="lbl_gate">
-   <property name="geometry">
-    <rect>
-     <x>10</x>
-     <y>480</y>
-     <width>701</width>
-     <height>18</height>
-    </rect>
-   </property>
-   <property name="frameShape">
-    <enum>QFrame::Shape::Box</enum>
-   </property>
-   <property name="text">
-    <string>Threshold do Noise Gate: -- dB</string>
-   </property>
-  </widget>
-  <widget class="QLabel" name="lbl_eq">
-   <property name="geometry">
-    <rect>
-     <x>10</x>
-     <y>510</y>
-     <width>701</width>
-     <height>18</height>
-    </rect>
-   </property>
-   <property name="frameShape">
-    <enum>QFrame::Shape::Box</enum>
-   </property>
-   <property name="text">
-    <string>Curva de EQ Calculada: Bass (--) | Mid (--) | Treble (--)</string>
-   </property>
-  </widget>
-  <widget class="QLabel" name="lbl_status">
-   <property name="geometry">
-    <rect>
-     <x>10</x>
-     <y>450</y>
-     <width>701</width>
-     <height>18</height>
-    </rect>
-   </property>
-   <property name="frameShape">
-    <enum>QFrame::Shape::Box</enum>
-   </property>
-   <property name="text">
-    <string>Status: Aguardando...</string>
-   </property>
-  </widget>
-  <widget class="QPushButton" name="btn_play_orig">
-   <property name="enabled">
-    <bool>false</bool>
-   </property>
-   <property name="geometry">
-    <rect>
-     <x>230</x>
-     <y>310</y>
-     <width>171</width>
-     <height>26</height>
-    </rect>
-   </property>
-   <property name="text">
-    <string>▶ Tocar Original</string>
-   </property>
-  </widget>
-  <widget class="QPushButton" name="btn_stop_orig">
-   <property name="enabled">
-    <bool>false</bool>
-   </property>
-   <property name="geometry">
-    <rect>
-     <x>230</x>
-     <y>340</y>
-     <width>171</width>
-     <height>26</height>
-    </rect>
-   </property>
-   <property name="text">
-    <string>⏹ Parar</string>
-   </property>
-  </widget>
-  <widget class="QPushButton" name="btn_stop_guitar">
-   <property name="enabled">
-    <bool>false</bool>
-   </property>
-   <property name="geometry">
-    <rect>
-     <x>600</x>
-     <y>340</y>
-     <width>101</width>
-     <height>26</height>
-    </rect>
-   </property>
-   <property name="text">
-    <string>⏹ Parar</string>
-   </property>
-  </widget>
-  <widget class="QPushButton" name="btn_play_guitar">
-   <property name="enabled">
-    <bool>false</bool>
-   </property>
-   <property name="geometry">
-    <rect>
-     <x>530</x>
-     <y>310</y>
-     <width>171</width>
-     <height>26</height>
-    </rect>
-   </property>
-   <property name="text">
-    <string>▶ Tocar Faixa Isolada</string>
-   </property>
-  </widget>
-  <widget class="QLabel" name="lbl_info">
-   <property name="geometry">
-    <rect>
-     <x>230</x>
-     <y>40</y>
-     <width>481</width>
-     <height>81</height>
-    </rect>
-   </property>
-   <property name="frameShape">
-    <enum>QFrame::Shape::Box</enum>
-   </property>
-   <property name="text">
-    <string>Música: Nenhuma | Duração: 00:00</string>
-   </property>
-  </widget>
-  <widget class="QSlider" name="slider_volume">
-   <property name="geometry">
-    <rect>
-     <x>9</x>
-     <y>70</y>
-     <width>211</width>
-     <height>20</height>
-    </rect>
-   </property>
-   <property name="maximum">
-    <number>110</number>
-   </property>
-   <property name="value">
-    <number>70</number>
-   </property>
-   <property name="orientation">
-    <enum>Qt::Orientation::Horizontal</enum>
-   </property>
-  </widget>
-  <widget class="QComboBox" name="combo_stems">
-   <property name="geometry">
-    <rect>
-     <x>530</x>
-     <y>340</y>
-     <width>71</width>
-     <height>26</height>
-    </rect>
+   <property name="bottomMargin">
+    <number>0</number>
    </property>
    <item>
-    <property name="text">
-     <string>guitar</string>
-    </property>
+    <widget class="QFrame" name="frameHeader">
+     <property name="minimumSize">
+      <size>
+       <width>0</width>
+       <height>52</height>
+      </size>
+     </property>
+     <property name="maximumSize">
+      <size>
+       <width>16777215</width>
+       <height>52</height>
+      </size>
+     </property>
+     <property name="frameShape">
+      <enum>QFrame::Shape::NoFrame</enum>
+     </property>
+     <layout class="QHBoxLayout" name="headerLayout">
+      <property name="spacing">
+       <number>10</number>
+      </property>
+      <property name="leftMargin">
+       <number>16</number>
+      </property>
+      <property name="topMargin">
+       <number>10</number>
+      </property>
+      <property name="rightMargin">
+       <number>16</number>
+      </property>
+      <property name="bottomMargin">
+       <number>10</number>
+      </property>
+      <item>
+       <widget class="QPushButton" name="btn_load">
+        <property name="maximumSize">
+         <size>
+          <width>240</width>
+          <height>16777215</height>
+         </size>
+        </property>
+        <property name="text">
+         <string>＋  Carregar Música de Referência…</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QProgressBar" name="progress_bar">
+        <property name="minimumSize">
+         <size>
+          <width>80</width>
+          <height>0</height>
+         </size>
+        </property>
+        <property name="maximumSize">
+         <size>
+          <width>120</width>
+          <height>6</height>
+         </size>
+        </property>
+        <property name="value">
+         <number>0</number>
+        </property>
+        <property name="textVisible">
+         <bool>false</bool>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="lbl_filepath">
+        <property name="text">
+         <string>Nenhum arquivo selecionado.</string>
+        </property>
+        <property name="alignment">
+         <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignVCenter</set>
+        </property>
+       </widget>
+      </item>
+     </layout>
+    </widget>
    </item>
    <item>
-    <property name="text">
-     <string>bass</string>
-    </property>
+    <layout class="QHBoxLayout" name="bodyLayout">
+     <property name="spacing">
+      <number>0</number>
+     </property>
+     <property name="leftMargin">
+      <number>0</number>
+     </property>
+     <property name="topMargin">
+      <number>0</number>
+     </property>
+     <property name="rightMargin">
+      <number>0</number>
+     </property>
+     <property name="bottomMargin">
+      <number>0</number>
+     </property>
+     <item>
+      <widget class="QFrame" name="frameLeft">
+       <property name="minimumSize">
+        <size>
+         <width>200</width>
+         <height>0</height>
+        </size>
+       </property>
+       <property name="maximumSize">
+        <size>
+         <width>260</width>
+         <height>16777215</height>
+        </size>
+       </property>
+       <property name="frameShape">
+        <enum>QFrame::Shape::NoFrame</enum>
+       </property>
+       <layout class="QVBoxLayout" name="leftLayout">
+        <property name="spacing">
+         <number>12</number>
+        </property>
+        <property name="leftMargin">
+         <number>16</number>
+        </property>
+        <property name="topMargin">
+         <number>16</number>
+        </property>
+        <property name="rightMargin">
+         <number>16</number>
+        </property>
+        <property name="bottomMargin">
+         <number>16</number>
+        </property>
+        <item>
+         <widget class="QLabel" name="lbl_cover">
+          <property name="minimumSize">
+           <size>
+            <width>0</width>
+            <height>160</height>
+           </size>
+          </property>
+          <property name="maximumSize">
+           <size>
+            <width>16777215</width>
+            <height>220</height>
+           </size>
+          </property>
+          <property name="text">
+           <string>♪</string>
+          </property>
+          <property name="scaledContents">
+           <bool>true</bool>
+          </property>
+          <property name="alignment">
+           <set>Qt::AlignmentFlag::AlignCenter</set>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QLabel" name="lbl_vol_main">
+          <property name="text">
+           <string>🔊  Volume</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QSlider" name="slider_volume">
+          <property name="enabled">
+           <bool>false</bool>
+          </property>
+          <property name="maximum">
+           <number>110</number>
+          </property>
+          <property name="value">
+           <number>110</number>
+          </property>
+          <property name="orientation">
+           <enum>Qt::Orientation::Horizontal</enum>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QFrame" name="lineSep">
+          <property name="frameShape">
+           <enum>QFrame::Shape::HLine</enum>
+          </property>
+          <property name="frameShadow">
+           <enum>QFrame::Shadow::Plain</enum>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btn_run_demucs">
+          <property name="enabled">
+           <bool>false</bool>
+          </property>
+          <property name="text">
+           <string>⚙  Separar Faixas  (Demucs)</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btn_run_analysis">
+          <property name="enabled">
+           <bool>false</bool>
+          </property>
+          <property name="text">
+           <string>📊  Tone Matching  (Librosa)</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <spacer name="leftSpacer">
+          <property name="orientation">
+           <enum>Qt::Orientation::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>40</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+       </layout>
+      </widget>
+     </item>
+     <item>
+      <layout class="QVBoxLayout" name="rightLayout">
+       <property name="spacing">
+        <number>0</number>
+       </property>
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>0</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+       <item>
+        <widget class="QFrame" name="frameInfo">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>105</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>16777215</width>
+           <height>105</height>
+          </size>
+         </property>
+         <property name="frameShape">
+          <enum>QFrame::Shape::NoFrame</enum>
+         </property>
+         <layout class="QVBoxLayout" name="infoLayout">
+          <property name="spacing">
+           <number>6</number>
+          </property>
+          <property name="leftMargin">
+           <number>14</number>
+          </property>
+          <property name="topMargin">
+           <number>10</number>
+          </property>
+          <property name="rightMargin">
+           <number>14</number>
+          </property>
+          <property name="bottomMargin">
+           <number>10</number>
+          </property>
+          <item>
+           <widget class="QLabel" name="lbl_info">
+            <property name="text">
+             <string>Nenhuma música carregada  |  00:00</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="seekOrigLayout">
+            <property name="spacing">
+             <number>6</number>
+            </property>
+            <item>
+             <widget class="QLabel" name="lbl_seek_orig">
+              <property name="minimumSize">
+               <size>
+                <width>30</width>
+                <height>0</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>Orig</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSlider" name="slider_seek_orig">
+              <property name="orientation">
+               <enum>Qt::Orientation::Horizontal</enum>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <layout class="QHBoxLayout" name="seekStemLayout">
+            <property name="spacing">
+             <number>6</number>
+            </property>
+            <item>
+             <widget class="QLabel" name="lbl_seek_stem">
+              <property name="minimumSize">
+               <size>
+                <width>30</width>
+                <height>0</height>
+               </size>
+              </property>
+              <property name="text">
+               <string>Stem</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <widget class="QSlider" name="slider_seek_stem">
+              <property name="orientation">
+               <enum>Qt::Orientation::Horizontal</enum>
+              </property>
+             </widget>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QFrame" name="frameMetadata">
+         <property name="sizePolicy">
+          <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
+           <horstretch>0</horstretch>
+           <verstretch>1</verstretch>
+          </sizepolicy>
+         </property>
+         <property name="frameShape">
+          <enum>QFrame::Shape::NoFrame</enum>
+         </property>
+         <layout class="QVBoxLayout" name="metadataLayout">
+          <property name="leftMargin">
+           <number>14</number>
+          </property>
+          <property name="topMargin">
+           <number>10</number>
+          </property>
+          <property name="rightMargin">
+           <number>14</number>
+          </property>
+          <property name="bottomMargin">
+           <number>10</number>
+          </property>
+          <item>
+           <widget class="QLabel" name="lbl_metadata">
+            <property name="text">
+             <string>Nenhuma informação disponível.</string>
+            </property>
+            <property name="alignment">
+             <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set>
+            </property>
+            <property name="wordWrap">
+             <bool>true</bool>
+            </property>
+           </widget>
+          </item>
+         </layout>
+        </widget>
+       </item>
+       <item>
+        <widget class="QFrame" name="framePlayback">
+         <property name="minimumSize">
+          <size>
+           <width>0</width>
+           <height>88</height>
+          </size>
+         </property>
+         <property name="maximumSize">
+          <size>
+           <width>16777215</width>
+           <height>88</height>
+          </size>
+         </property>
+         <property name="frameShape">
+          <enum>QFrame::Shape::NoFrame</enum>
+         </property>
+         <layout class="QHBoxLayout" name="playbackLayout">
+          <property name="spacing">
+           <number>16</number>
+          </property>
+          <property name="leftMargin">
+           <number>14</number>
+          </property>
+          <property name="topMargin">
+           <number>10</number>
+          </property>
+          <property name="rightMargin">
+           <number>14</number>
+          </property>
+          <property name="bottomMargin">
+           <number>10</number>
+          </property>
+          <item>
+           <layout class="QVBoxLayout" name="origColLayout">
+            <property name="spacing">
+             <number>6</number>
+            </property>
+            <item>
+             <widget class="QLabel" name="lbl_section_orig">
+              <property name="text">
+               <string>ORIGINAL</string>
+              </property>
+             </widget>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="origControlsLayout">
+              <property name="spacing">
+               <number>6</number>
+              </property>
+              <item>
+               <widget class="QPushButton" name="btn_play_orig">
+                <property name="enabled">
+                 <bool>false</bool>
+                </property>
+                <property name="text">
+                 <string>▶</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btn_stop_orig">
+                <property name="enabled">
+                 <bool>false</bool>
+                </property>
+                <property name="text">
+                 <string>⏹</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLabel" name="lbl_vol_orig">
+                <property name="text">
+                 <string>Vol</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QSlider" name="slider_vol_orig">
+                <property name="minimumSize">
+                 <size>
+                  <width>70</width>
+                  <height>0</height>
+                 </size>
+                </property>
+                <property name="value">
+                 <number>50</number>
+                </property>
+                <property name="orientation">
+                 <enum>Qt::Orientation::Horizontal</enum>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+           </layout>
+          </item>
+          <item>
+           <widget class="QFrame" name="vlineSep">
+            <property name="maximumSize">
+             <size>
+              <width>1</width>
+              <height>16777215</height>
+             </size>
+            </property>
+            <property name="frameShape">
+             <enum>QFrame::Shape::VLine</enum>
+            </property>
+            <property name="frameShadow">
+             <enum>QFrame::Shadow::Plain</enum>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <layout class="QVBoxLayout" name="stemColLayout">
+            <property name="spacing">
+             <number>6</number>
+            </property>
+            <item>
+             <layout class="QHBoxLayout" name="stemHeaderLayout">
+              <property name="spacing">
+               <number>8</number>
+              </property>
+              <item>
+               <widget class="QLabel" name="lbl_section_stem">
+                <property name="text">
+                 <string>FAIXA ISOLADA</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QComboBox" name="combo_stems">
+                <property name="enabled">
+                 <bool>false</bool>
+                </property>
+                <item>
+                 <property name="text">
+                  <string>guitar</string>
+                 </property>
+                </item>
+                <item>
+                 <property name="text">
+                  <string>bass</string>
+                 </property>
+                </item>
+                <item>
+                 <property name="text">
+                  <string>drums</string>
+                 </property>
+                </item>
+                <item>
+                 <property name="text">
+                  <string>piano</string>
+                 </property>
+                </item>
+                <item>
+                 <property name="text">
+                  <string>vocals</string>
+                 </property>
+                </item>
+                <item>
+                 <property name="text">
+                  <string>other</string>
+                 </property>
+                </item>
+               </widget>
+              </item>
+             </layout>
+            </item>
+            <item>
+             <layout class="QHBoxLayout" name="stemControlsLayout">
+              <property name="spacing">
+               <number>6</number>
+              </property>
+              <item>
+               <widget class="QPushButton" name="btn_play_guitar">
+                <property name="enabled">
+                 <bool>false</bool>
+                </property>
+                <property name="text">
+                 <string>▶</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QPushButton" name="btn_stop_guitar">
+                <property name="enabled">
+                 <bool>false</bool>
+                </property>
+                <property name="text">
+                 <string>⏹</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QLabel" name="lbl_vol_stem">
+                <property name="text">
+                 <string>Vol</string>
+                </property>
+               </widget>
+              </item>
+              <item>
+               <widget class="QSlider" name="slider_vol_stem">
+                <property name="minimumSize">
+                 <size>
+                  <width>70</width>
+                  <height>0</height>
+                 </size>
+                </property>
+                <property name="value">
+                 <number>50</number>
+                </property>
+                <property name="orientation">
+                 <enum>Qt::Orientation::Horizontal</enum>
+                </property>
+               </widget>
+              </item>
+             </layout>
+            </item>
+           </layout>
+          </item>
+         </layout>
+        </widget>
+       </item>
+      </layout>
+     </item>
+    </layout>
    </item>
    <item>
-    <property name="text">
-     <string>drums</string>
-    </property>
+    <widget class="QFrame" name="frameStatus">
+     <property name="minimumSize">
+      <size>
+       <width>0</width>
+       <height>28</height>
+      </size>
+     </property>
+     <property name="maximumSize">
+      <size>
+       <width>16777215</width>
+       <height>28</height>
+      </size>
+     </property>
+     <property name="frameShape">
+      <enum>QFrame::Shape::NoFrame</enum>
+     </property>
+     <layout class="QHBoxLayout" name="statusLayout">
+      <property name="spacing">
+       <number>14</number>
+      </property>
+      <property name="leftMargin">
+       <number>12</number>
+      </property>
+      <property name="topMargin">
+       <number>0</number>
+      </property>
+      <property name="rightMargin">
+       <number>12</number>
+      </property>
+      <property name="bottomMargin">
+       <number>0</number>
+      </property>
+      <item>
+       <widget class="QLabel" name="lbl_status">
+        <property name="text">
+         <string>● Status: Aguardando…</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QFrame" name="vlineStatus1">
+        <property name="maximumSize">
+         <size>
+          <width>1</width>
+          <height>14</height>
+         </size>
+        </property>
+        <property name="frameShape">
+         <enum>QFrame::Shape::VLine</enum>
+        </property>
+        <property name="frameShadow">
+         <enum>QFrame::Shadow::Plain</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="lbl_gate">
+        <property name="text">
+         <string>Noise Gate: -- dB</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QFrame" name="vlineStatus2">
+        <property name="maximumSize">
+         <size>
+          <width>1</width>
+          <height>14</height>
+         </size>
+        </property>
+        <property name="frameShape">
+         <enum>QFrame::Shape::VLine</enum>
+        </property>
+        <property name="frameShadow">
+         <enum>QFrame::Shadow::Plain</enum>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <widget class="QLabel" name="lbl_eq">
+        <property name="text">
+         <string>EQ — Bass: --  |  Mid: --  |  Treble: --</string>
+        </property>
+       </widget>
+      </item>
+      <item>
+       <spacer name="statusSpacer">
+        <property name="orientation">
+         <enum>Qt::Orientation::Horizontal</enum>
+        </property>
+        <property name="sizeHint" stdset="0">
+         <size>
+          <width>40</width>
+          <height>20</height>
+         </size>
+        </property>
+       </spacer>
+      </item>
+     </layout>
+    </widget>
    </item>
-   <item>
-    <property name="text">
-     <string>piano</string>
-    </property>
-   </item>
-   <item>
-    <property name="text">
-     <string>vocals</string>
-    </property>
-   </item>
-   <item>
-    <property name="text">
-     <string>other</string>
-    </property>
-   </item>
-  </widget>
-  <widget class="QLabel" name="lbl_cover">
-   <property name="geometry">
-    <rect>
-     <x>230</x>
-     <y>130</y>
-     <width>150</width>
-     <height>150</height>
-    </rect>
-   </property>
-   <property name="frameShape">
-    <enum>QFrame::Shape::Box</enum>
-   </property>
-   <property name="text">
-    <string/>
-   </property>
-   <property name="scaledContents">
-    <bool>true</bool>
-   </property>
-  </widget>
-  <widget class="QLabel" name="lbl_metadata">
-   <property name="geometry">
-    <rect>
-     <x>390</x>
-     <y>130</y>
-     <width>311</width>
-     <height>151</height>
-    </rect>
-   </property>
-   <property name="frameShape">
-    <enum>QFrame::Shape::Box</enum>
-   </property>
-   <property name="text">
-    <string/>
-   </property>
-  </widget>
-  <widget class="QSlider" name="slider_seek_orig">
-   <property name="geometry">
-    <rect>
-     <x>230</x>
-     <y>50</y>
-     <width>471</width>
-     <height>16</height>
-    </rect>
-   </property>
-   <property name="orientation">
-    <enum>Qt::Orientation::Horizontal</enum>
-   </property>
-  </widget>
-  <widget class="QSlider" name="slider_vol_orig">
-   <property name="geometry">
-    <rect>
-     <x>230</x>
-     <y>290</y>
-     <width>171</width>
-     <height>16</height>
-    </rect>
-   </property>
-   <property name="value">
-    <number>50</number>
-   </property>
-   <property name="orientation">
-    <enum>Qt::Orientation::Horizontal</enum>
-   </property>
-  </widget>
-  <widget class="QSlider" name="slider_seek_stem">
-   <property name="geometry">
-    <rect>
-     <x>230</x>
-     <y>90</y>
-     <width>471</width>
-     <height>16</height>
-    </rect>
-   </property>
-   <property name="orientation">
-    <enum>Qt::Orientation::Horizontal</enum>
-   </property>
-  </widget>
-  <widget class="QSlider" name="slider_vol_stem">
-   <property name="geometry">
-    <rect>
-     <x>530</x>
-     <y>290</y>
-     <width>171</width>
-     <height>16</height>
-    </rect>
-   </property>
-   <property name="value">
-    <number>50</number>
-   </property>
-   <property name="orientation">
-    <enum>Qt::Orientation::Horizontal</enum>
-   </property>
-  </widget>
-  <widget class="QPushButton" name="btn_run_demucs">
-   <property name="enabled">
-    <bool>false</bool>
-   </property>
-   <property name="geometry">
-    <rect>
-     <x>10</x>
-     <y>410</y>
-     <width>201</width>
-     <height>26</height>
-    </rect>
-   </property>
-   <property name="text">
-    <string>Separar Faixas (IA Demucs)</string>
-   </property>
-  </widget>
-  <widget class="QPushButton" name="btn_run_analysis">
-   <property name="enabled">
-    <bool>false</bool>
-   </property>
-   <property name="geometry">
-    <rect>
-     <x>220</x>
-     <y>410</y>
-     <width>201</width>
-     <height>26</height>
-    </rect>
-   </property>
-   <property name="text">
-    <string>Extrair Tone Matching (Librosa)</string>
-   </property>
-  </widget>
+  </layout>
  </widget>
  <resources/>
  <connections/>
