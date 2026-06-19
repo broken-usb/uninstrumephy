@@ -6,6 +6,8 @@ from pathlib import Path
 import librosa
 import numpy as np
 
+from librosa.util import normalize
+
 logger = logging.getLogger(__name__)
 
 
@@ -53,37 +55,54 @@ class AudioAnalyzer:
 
         logger.info(f"Analisando stem: {filepath}")
 
-        # Carregamento
+        # Carregamento com taxa reduzida para menor custo
         y, sr = librosa.load(
             str(filepath),
             sr=self.SR_TARGET,
             mono=True,
+            dtype=np.float32,
         )
 
-        # RMS / gate
-        rms      = librosa.feature.rms(y=y)[0]
-        mean_rms = float(np.mean(rms))
+        # Normaliza a onda para reduzir variações extremas de amplitude
+        y = normalize(y)
+
+        # RMS / gate (evita reprocessamento extra)
+        rms = librosa.feature.rms(y=y, frame_length=1024, hop_length=512)[0]
+        if rms.size == 0:
+            mean_rms = 0.0
+        else:
+            mean_rms = float(np.mean(rms))
 
         threshold_db = float(
             librosa.amplitude_to_db(
-                np.array([mean_rms]), ref=1.0
+                np.array([mean_rms], dtype=np.float32),
+                ref=1.0,
             )[0]
         )
         gate_target = round(threshold_db + self.GATE_OFFSET_DB, 2)
 
-        # FFT / bandas
-        stft  = np.abs(librosa.stft(y))
-        freqs = librosa.fft_frequencies(sr=sr)
+        # FFT / bandas com resolução menor para reduzir custo
+        stft = np.abs(
+            librosa.stft(
+                y,
+                n_fft=1024,
+                hop_length=512,
+                win_length=1024,
+            )
+        )
+        freqs = librosa.fft_frequencies(sr=sr, n_fft=1024)
 
         def band_energy(low: int, high: int) -> float:
             idx = np.where((freqs >= low) & (freqs <= high))[0]
-            return float(np.mean(stft[idx, :])) if len(idx) else 0.0
+            if idx.size == 0:
+                return 0.0
+            return float(np.mean(stft[idx, :]))
 
         bass_e   = band_energy(*self.BAND_BASS)
         mid_e    = band_energy(*self.BAND_MID)
         treble_e = band_energy(*self.BAND_TREBLE)
 
-        total = bass_e + mid_e + treble_e + 1e-6   # evita divisão por zero
+        total = bass_e + mid_e + treble_e + 1e-6
 
         eq = {
             "bass":   round((bass_e   / total) * 10, 2),

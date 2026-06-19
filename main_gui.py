@@ -9,7 +9,7 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QMessageBox,
 )
-from PyQt6.QtCore import QThread, pyqtSignal, QUrl
+from PyQt6.QtCore import QThread, pyqtSignal, QUrl, Qt
 from PyQt6.QtGui import QPixmap, QImage
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
@@ -28,6 +28,53 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+# Metadata worker
+
+class MetadataWorker(QThread):
+
+    finished = pyqtSignal(dict)
+    error    = pyqtSignal(str)
+
+    def __init__(self, file_path: str) -> None:
+        super().__init__()
+        self.file_path = file_path
+
+    def run(self) -> None:
+        try:
+            tag = TinyTag.get(self.file_path, image=True)
+
+            image_data = None
+            images = getattr(tag, "images", None)
+            if images:
+                if isinstance(images, list) and images:
+                    image_data = images[0]
+                else:
+                    try:
+                        image_data = images.any()
+                    except Exception:
+                        image_data = None
+            elif hasattr(tag, "get_image"):
+                try:
+                    image_data = tag.get_image()
+                except Exception:
+                    image_data = None
+
+            params = {
+                "file_path": self.file_path,
+                "title": tag.title or Path(self.file_path).stem,
+                "artist": tag.artist or "Desconhecido",
+                "album": tag.album or "Desconhecido",
+                "year": str(tag.year) if tag.year else "—",
+                "duration": int(tag.duration or 0),
+                "image_data": image_data,
+            }
+            self.finished.emit(params)
+
+        except Exception:
+            logger.exception("Erro ao carregar metadados.")
+            self.error.emit(traceback.format_exc())
+
+
 # Demucs worker
 
 class DemucsWorker(QThread):
@@ -36,17 +83,16 @@ class DemucsWorker(QThread):
     error    = pyqtSignal(str)
     status   = pyqtSignal(str)
 
-    def __init__(self, separator: AudioSeparator, audio_path: str) -> None:
+    def __init__(self, audio_path: str) -> None:
         super().__init__()
-        self.separator  = separator
         self.audio_path = audio_path
 
     def run(self) -> None:
         try:
             logger.info(f"Iniciando separação: {self.audio_path}")
 
-            # Usa status.emit como callback de progresso
-            guitar_path = self.separator.extract_guitar(
+            separator = AudioSeparator()
+            guitar_path = separator.extract_guitar(
                 self.audio_path,
                 progress_cb=self.status.emit,
             )
@@ -103,9 +149,6 @@ class MainWindow(QDialog, Ui_Dialog):
         self.path_original:  str = ""
         self.path_guitarra:  str = ""
         self.path_stems_dir: str = ""
-
-        # Separador (cache do modelo)
-        self.separator = AudioSeparator()
 
         # Players e saídas
         self.audio_out_orig = QAudioOutput()
@@ -192,51 +235,40 @@ class MainWindow(QDialog, Ui_Dialog):
         self.path_original = file_name
 
         # Para qualquer reprodução anterior
-        self.player_orig.stop()
-        self.player_stem.stop()
+        try:
+            self.player_orig.stop()
+        except RuntimeError:
+            pass
+        try:
+            self.player_stem.stop()
+        except RuntimeError:
+            pass
 
         self.lbl_filepath.setText(Path(file_name).name)
+        self.lbl_info.setText("Carregando metadados…")
+        self.lbl_metadata.setText("Carregando metadados…")
+        self.lbl_cover.clear()
+        self.lbl_cover.setText("♪")
 
-        # Metadados
-        title = Path(file_name).stem   # fallback sem metadados
-        try:
-            tag = TinyTag.get(file_name, image=True)
+        # Cancela thread antiga de metadados, se houver
+        if getattr(self, "metadata_thread", None) is not None:
+            try:
+                self.metadata_thread.quit()
+                self.metadata_thread.wait(1000)
+            except RuntimeError:
+                pass
+            finally:
+                self.metadata_thread = None
 
-            title   = tag.title  or title
-            artista = tag.artist or "Desconhecido"
-            album   = tag.album  or "Desconhecido"
-            ano     = str(tag.year) if tag.year else "—"
+        self.metadata_thread = MetadataWorker(file_name)
+        self.metadata_thread.finished.connect(self._on_metadata_finished)
+        self.metadata_thread.error.connect(self._on_metadata_error)
+        self.metadata_thread.start()
 
-            duration_str = self._format_duration(int(tag.duration or 0))
-
-            self.lbl_info.setText(f"{title}  |  {duration_str}")
-            self.lbl_metadata.setText(
-                f"Música:  {title}\n"
-                f"Artista: {artista}\n"
-                f"Álbum:   {album}  ({ano})"
-            )
-
-            img_data = tag.get_image()
-            if img_data:
-                img = QImage()
-                img.loadFromData(img_data)
-                self.lbl_cover.setPixmap(QPixmap(img))
-                self.lbl_cover.setText("")
-            else:
-                self.lbl_cover.clear()
-                self.lbl_cover.setText("♪")
-
-        except Exception:
-            logger.exception("Falha ao ler metadados.")
-            self.lbl_info.setText(f"{title}  |  --:--")
-            self.lbl_metadata.setText("Sem metadados.")
-            self.lbl_cover.clear()
-            self.lbl_cover.setText("♪")
-
-        # Estado da UI
-        self.btn_play_orig.setEnabled(True)
+        # Estado da UI enquanto a leitura ocorre
+        self.btn_play_orig.setEnabled(False)
         self.btn_stop_orig.setEnabled(False)
-        self.btn_run_demucs.setEnabled(True)
+        self.btn_run_demucs.setEnabled(False)
 
         # Invalida resultados anteriores de stems/análise
         self.path_guitarra  = ""
@@ -247,6 +279,64 @@ class MainWindow(QDialog, Ui_Dialog):
         self.btn_run_analysis.setEnabled(False)
 
         self.progress_bar.setValue(0)
+        self._set_status("Carregando metadados…")
+
+    def _on_metadata_finished(self, params: dict) -> None:
+        if params.get("file_path") != self.path_original:
+            return
+
+        title = params.get("title", Path(self.path_original).stem)
+        artista = params.get("artist", "Desconhecido")
+        album = params.get("album", "Desconhecido")
+        ano = params.get("year", "—")
+        duration_raw = int(params.get("duration", 0) or 0)
+        duration_str = self._format_duration(duration_raw)
+
+        self.lbl_info.setText(f"{title}  |  {duration_str}")
+        self.lbl_metadata.setText(
+            f"Música:  {title}\n"
+            f"Artista: {artista}\n"
+            f"Álbum:   {album}  ({ano})"
+        )
+
+        image_data = params.get("image_data")
+        if image_data:
+            try:
+                img = QImage()
+                if img.loadFromData(image_data):
+                    pixmap = QPixmap.fromImage(img)
+                    self.lbl_cover.setPixmap(
+                        pixmap.scaled(
+                            180,
+                            180,
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation,
+                        )
+                    )
+                    self.lbl_cover.setText("")
+                else:
+                    raise ValueError("Imagem inválida")
+            except Exception:
+                self.lbl_cover.clear()
+                self.lbl_cover.setText("♪")
+        else:
+            self.lbl_cover.clear()
+            self.lbl_cover.setText("♪")
+
+        self.btn_play_orig.setEnabled(True)
+        self.btn_stop_orig.setEnabled(False)
+        self.btn_run_demucs.setEnabled(True)
+        self._set_status("Música carregada.")
+
+    def _on_metadata_error(self, err_msg: str) -> None:
+        logger.error("Falha ao carregar metadados.")
+        self.lbl_info.setText(f"{Path(self.path_original).stem}  |  --:--")
+        self.lbl_metadata.setText("Sem metadados.")
+        self.lbl_cover.clear()
+        self.lbl_cover.setText("♪")
+        self.btn_play_orig.setEnabled(True)
+        self.btn_stop_orig.setEnabled(False)
+        self.btn_run_demucs.setEnabled(True)
         self._set_status("Música carregada.")
 
     # Demucs
@@ -257,11 +347,10 @@ class MainWindow(QDialog, Ui_Dialog):
         self.btn_load.setEnabled(False)
         self.progress_bar.setRange(0, 0)
 
-        self.demucs_thread = DemucsWorker(self.separator, self.path_original)
+        self.demucs_thread = DemucsWorker(self.path_original)
         self.demucs_thread.status.connect(self._set_status)
         self.demucs_thread.finished.connect(self._on_demucs_finished)
         self.demucs_thread.error.connect(self._on_error)
-        self.demucs_thread.finished.connect(self.demucs_thread.deleteLater)
         self.demucs_thread.start()
 
     def _on_demucs_finished(self, guitar_path: str, stems_dir: str) -> None:
@@ -292,7 +381,6 @@ class MainWindow(QDialog, Ui_Dialog):
         self.analysis_thread.status.connect(self._set_status)
         self.analysis_thread.finished.connect(self._on_analysis_finished)
         self.analysis_thread.error.connect(self._on_error)
-        self.analysis_thread.finished.connect(self.analysis_thread.deleteLater)
         self.analysis_thread.start()
 
     def _on_analysis_finished(self, params: dict) -> None:
@@ -433,21 +521,59 @@ class MainWindow(QDialog, Ui_Dialog):
         mins, secs = divmod(total_secs, 60)
         return f"{mins:02d}:{secs:02d}"
 
+    def _stop_thread(self, attr: str) -> None:
+        thread = getattr(self, attr, None)
+        if thread is None:
+            return
+
+        try:
+            if not thread.isRunning():
+                setattr(self, attr, None)
+                return
+        except RuntimeError:
+            logger.info(f"{attr} já foi descartado pela Qt.")
+            setattr(self, attr, None)
+            return
+
+        logger.info(f"Parando {attr}…")
+        try:
+            thread.quit()
+            if not thread.wait(3000):
+                logger.warning(
+                    f"{attr} não encerrou em 3s; forçando término."
+                )
+                thread.terminate()
+                thread.wait(1000)
+        except RuntimeError:
+            logger.info(f"{attr} foi descartado durante o shutdown.")
+        finally:
+            setattr(self, attr, None)
+
     # Cleanup
 
     def closeEvent(self, event) -> None:
         """Para players e aguarda threads antes de fechar a janela."""
-        self.player_orig.stop()
-        self.player_stem.stop()
+        try:
+            self.player_orig.stop()
+        except RuntimeError:
+            pass
 
-        for attr in ("demucs_thread", "analysis_thread"):
-            thread = getattr(self, attr, None)
-            if thread is not None and thread.isRunning():
-                logger.info(f"Aguardando {attr} encerrar…")
-                thread.quit()
-                thread.wait(3000)
+        try:
+            self.player_stem.stop()
+        except RuntimeError:
+            pass
 
-        event.accept()
+        for attr in (
+            "demucs_thread",
+            "analysis_thread",
+            "metadata_thread",
+        ):
+            self._stop_thread(attr)
+
+        try:
+            event.accept()
+        except RuntimeError:
+            pass
 
 
 # Entry point

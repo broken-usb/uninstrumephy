@@ -104,10 +104,11 @@ class AudioSeparator:
             channels=self.model.audio_channels,
         )
 
-        wav = torch.tensor(wav, dtype=torch.float32, device=self.device)
+        # Evita cópia desnecessária e reduz warnings/overhead
+        wav = torch.as_tensor(wav, dtype=torch.float32, device=self.device)
 
         if wav.dim() == 2:
-            wav = wav.unsqueeze(0)   # adiciona dimensão de batch
+            wav = wav.unsqueeze(0)
 
         # Inferência
         self._notify(progress_cb, "Executando separação Demucs (IA)…")
@@ -124,8 +125,13 @@ class AudioSeparator:
 
         for source, stem_name in zip(sources, self.model.sources):
             out_path = out_dir / f"{stem_name}.wav"
-            audio    = source.detach().cpu().numpy().T
-            sf.write(str(out_path), audio, self.model.samplerate)
+            audio = source.detach().cpu().numpy().T
+            sf.write(
+                str(out_path),
+                audio,
+                self.model.samplerate,
+                subtype="PCM_16",
+            )
             logger.info(f"Stem salva: {out_path}")
 
         self._notify(progress_cb, "Separação concluída!")
