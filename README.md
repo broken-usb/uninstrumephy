@@ -13,14 +13,29 @@ Interface gráfica inteligente para **Tone Matching** (casamento de timbres de g
 
 ## Como Instalar e Rodar
 
+0. **Instale o Python 3.14+**
+```bash
+sudo apt install -y python3-full # Ubuntu/Debian
+```
+
+```bash
+sudo pacman -S python # Arch
+```
+
+```bash
+sudo dnf install python # Fedora/RHEL
+```
+
+Windows: https://www.python.org/downloads/windows/
+
 1. **Clone o repositório:**
-```git
+```bash
 git clone https://github.com/broken-usb/uninstrumephy.git
 cd uninstrumephy
 ```
 
 2. **Crie e ative seu ambiente virtual (`venv`):**
-```python
+```bash
 python -m venv .venv
 ```
 ```bash
@@ -31,7 +46,7 @@ source .venv/bin/activate # Linux
 ```
 
 3. **Instale as dependências:**
-```python
+```bash
 pip install --upgrade pip
 ```
 ```bash
@@ -42,6 +57,6 @@ pip install -r requirements-win.txt # Windows
 ```
 
 4. **Execute o aplicativo:**
-```python
+```bash
 python main_gui.py
 ```
