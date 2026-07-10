@@ -393,6 +393,7 @@ class MainWindow(QDialog, Ui_Dialog):
 
         gate = params.get("noise_gate_threshold_db", "--")
         eq   = params.get("eq", {})
+        is_silent = params.get("is_silent", False)
 
         self.lbl_gate.setText(f"Noise Gate: {gate} dB")
         self.lbl_eq.setText(
@@ -400,7 +401,21 @@ class MainWindow(QDialog, Ui_Dialog):
             f"Mid: {eq.get('mid', '--')}  |  "
             f"Treble: {eq.get('treble', '--')}"
         )
-        self._set_status("Parâmetros calculados com sucesso!")
+
+        if is_silent:
+            self._set_status(
+                "Aviso: a faixa analisada está silenciosa ou vazia."
+            )
+            QMessageBox.warning(
+                self,
+                "Faixa silenciosa",
+                "O stem selecionado não contém sinal audível relevante.\n"
+                "Isso costuma acontecer quando o instrumento escolhido não "
+                "está presente na música original. Os parâmetros calculados "
+                "não são confiáveis nesse caso."
+            )
+        else:
+            self._set_status("Parâmetros calculados com sucesso!")
 
     # Playback original
 

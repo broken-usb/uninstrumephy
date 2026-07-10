@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import logging
 from pathlib import Path
 from typing import Callable
@@ -31,6 +32,7 @@ class AudioSeparator:
     _cached_model = None
 
     MODEL_NAME = "htdemucs_6s"
+    DEFAULT_STEM = "guitar"
 
     def __init__(self, output_dir: str = "output") -> None:
         self.output_dir = Path(output_dir)
@@ -51,27 +53,30 @@ class AudioSeparator:
 
     # Separação
 
-    def extract_guitar(
+    def extract_stem(
         self,
         audio_path: str,
+        stem_name: str = DEFAULT_STEM,
         progress_cb: Callable[[str], None] | None = None,
     ) -> str:
         """
         Separa todos os stems do arquivo de áudio e retorna o caminho
-        do stem de guitarra.
+        do stem solicitado (guitar, bass, drums, piano, vocals ou other).
 
         O progress_cb, se fornecido, é chamado com strings de status
         intermediárias — ideal para conectar a um pyqtSignal da UI.
 
         Args:
             audio_path:  Caminho para o arquivo de áudio de entrada.
+            stem_name:   Nome do stem desejado (deve existir em model.sources).
             progress_cb: Callback opcional para progresso (str → None).
 
         Returns:
-            Caminho absoluto para o arquivo guitar.wav gerado.
+            Caminho absoluto para o arquivo <stem_name>.wav gerado.
 
         Raises:
             FileNotFoundError: Se audio_path não existir.
+            ValueError: Se stem_name não for suportado pelo modelo carregado.
         """
         audio_path = Path(audio_path)
 
@@ -80,20 +85,25 @@ class AudioSeparator:
                 f"Arquivo não encontrado: {audio_path}"
             )
 
-        logger.info(f"Processando áudio: {audio_path}")
+        if stem_name not in self.model.sources:
+            raise ValueError(
+                f"Stem '{stem_name}' não é suportado pelo modelo "
+                f"{self.MODEL_NAME}. Disponíveis: {list(self.model.sources)}"
+            )
 
-        out_dir = (
-            self.output_dir / self.MODEL_NAME / audio_path.stem
-        )
+        logger.info(f"Processando áudio: {audio_path} (stem alvo: {stem_name})")
+
+        out_dir = self._cache_dir_for(audio_path)
         out_dir.mkdir(parents=True, exist_ok=True)
 
-        guitar_path = out_dir / "guitar.wav"
+        target_path = out_dir / f"{stem_name}.wav"
 
-        # Reaproveita stems existentes
-        if guitar_path.exists():
+        # Reaproveita stems existentes (todos os stems são salvos juntos,
+        # então a existência de qualquer um indica que o cache é válido)
+        if target_path.exists():
             logger.info("Stem já existe. Reutilizando cache.")
             self._notify(progress_cb, "Reutilizando cache de stems…")
-            return str(guitar_path.resolve())
+            return str(target_path.resolve())
 
         # Leitura do áudio
         self._notify(progress_cb, "Carregando áudio…")
@@ -123,8 +133,8 @@ class AudioSeparator:
         self._notify(progress_cb, "Salvando stems…")
         logger.info("Salvando stems…")
 
-        for source, stem_name in zip(sources, self.model.sources):
-            out_path = out_dir / f"{stem_name}.wav"
+        for source, name in zip(sources, self.model.sources):
+            out_path = out_dir / f"{name}.wav"
             audio = source.detach().cpu().numpy().T
             sf.write(
                 str(out_path),
@@ -137,9 +147,29 @@ class AudioSeparator:
         self._notify(progress_cb, "Separação concluída!")
         logger.info("Separação concluída.")
 
-        return str(guitar_path.resolve())
+        return str(target_path.resolve())
 
-    # Utilitário interno
+    def extract_guitar(
+        self,
+        audio_path: str,
+        progress_cb: Callable[[str], None] | None = None,
+    ) -> str:
+        """Mantido por compatibilidade — equivalente a extract_stem(..., 'guitar')."""
+        return self.extract_stem(audio_path, stem_name="guitar", progress_cb=progress_cb)
+
+    # Utilitários internos
+
+    def _cache_dir_for(self, audio_path: Path) -> Path:
+        """
+        Gera um diretório de cache único por arquivo de entrada, baseado
+        no caminho absoluto (evita colisão entre arquivos de mesmo nome
+        localizados em pastas diferentes).
+        """
+        digest = hashlib.sha1(
+            str(audio_path.resolve()).encode("utf-8")
+        ).hexdigest()[:10]
+        safe_name = f"{audio_path.stem}_{digest}"
+        return self.output_dir / self.MODEL_NAME / safe_name
 
     @staticmethod
     def _notify(

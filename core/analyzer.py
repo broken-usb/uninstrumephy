@@ -10,6 +10,9 @@ from librosa.util import normalize
 
 logger = logging.getLogger(__name__)
 
+# Amplitude mínima considerada "silêncio" (evita log(0) = -inf)
+MIN_AMPLITUDE = 1e-6
+
 
 class AudioAnalyzer:
     """
@@ -25,14 +28,19 @@ class AudioAnalyzer:
     BAND_MID:    tuple[int, int] = (250, 2_000)
     BAND_TREBLE: tuple[int, int] = (2_000, 6_000)
 
-    # Offset abaixo do RMS médio para calcular o threshold do gate
+    # Offset abaixo do RMS de referência para calcular o threshold do gate
     GATE_OFFSET_DB: float = -12.0
+
+    # Percentil usado como referência de RMS (mais robusto que a média em
+    # faixas com trechos longos de silêncio ou dinâmica muito variável)
+    GATE_RMS_PERCENTILE: float = 75.0
 
     def analyze_stem(self, filepath: str) -> dict:
         """
         Carrega o arquivo de áudio e extrai:
           - noise_gate_threshold_db: threshold sugerido para o noise gate
           - eq: dicionário com energias relativas de bass, mid e treble (0–10)
+          - is_silent: True se o stem não contém sinal audível relevante
 
         Args:
             filepath: Caminho para o arquivo de áudio (qualquer stem mono).
@@ -40,7 +48,8 @@ class AudioAnalyzer:
         Returns:
             {
                 "noise_gate_threshold_db": float,
-                "eq": {"bass": float, "mid": float, "treble": float}
+                "eq": {"bass": float, "mid": float, "treble": float},
+                "is_silent": bool
             }
 
         Raises:
@@ -63,19 +72,30 @@ class AudioAnalyzer:
             dtype=np.float32,
         )
 
+        if y.size == 0 or np.max(np.abs(y)) < MIN_AMPLITUDE:
+            logger.warning(f"Stem silencioso ou vazio: {filepath}")
+            return {
+                "noise_gate_threshold_db": -80.0,
+                "eq": {"bass": 0.0, "mid": 0.0, "treble": 0.0},
+                "is_silent": True,
+            }
+
         # Normaliza a onda para reduzir variações extremas de amplitude
         y = normalize(y)
 
-        # RMS / gate (evita reprocessamento extra)
+        # RMS / gate — usa percentil ao invés de média para não ser
+        # arrastado por longos trechos de silêncio dentro da faixa
         rms = librosa.feature.rms(y=y, frame_length=1024, hop_length=512)[0]
+        rms = rms[rms > MIN_AMPLITUDE]
+
         if rms.size == 0:
-            mean_rms = 0.0
+            reference_rms = MIN_AMPLITUDE
         else:
-            mean_rms = float(np.mean(rms))
+            reference_rms = float(np.percentile(rms, self.GATE_RMS_PERCENTILE))
 
         threshold_db = float(
             librosa.amplitude_to_db(
-                np.array([mean_rms], dtype=np.float32),
+                np.array([reference_rms], dtype=np.float32),
                 ref=1.0,
             )[0]
         )
@@ -113,6 +133,7 @@ class AudioAnalyzer:
         params: dict = {
             "noise_gate_threshold_db": gate_target,
             "eq": eq,
+            "is_silent": False,
         }
 
         logger.info(f"Análise concluída: {params}")
