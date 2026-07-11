@@ -38,5 +38,5 @@ jobs:
       run: |
         python -m py_compile core/separator.py
         python -m py_compile core/analyzer.py
-        python -m py_compile main_cli.py
+        python -m py_compile core/hardware.py
         python -m py_compile main_gui.py
