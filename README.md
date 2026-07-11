@@ -15,7 +15,7 @@ Interface gráfica inteligente para **Tone Matching** (casamento de timbres de g
 
 0. **Instale o Python 3.14+**
 ```bash
-sudo apt install -y python3-full # Ubuntu/Debian
+sudo apt install -y python3-full # Ubuntu
 ```
 
 ```bash
@@ -23,10 +23,8 @@ sudo pacman -S python # Arch
 ```
 
 ```bash
-sudo dnf install python # Fedora/RHEL
+sudo dnf install python # Fedora
 ```
-
-Windows: https://www.python.org/downloads/windows/
 
 1. **Clone o repositório:**
 ```bash
@@ -41,9 +39,6 @@ python -m venv .venv
 ```bash
 source .venv/bin/activate # Linux
 ```
-```ps1
-.venv/Scripts/Activate.ps1 # Windows (PowerShell)
-```
 
 3. **Instale as dependências:**
 ```bash
@@ -51,9 +46,6 @@ pip install --upgrade pip
 ```
 ```bash
 pip install -r requirements.txt # Linux
-```
-```ps1
-pip install -r requirements-win.txt # Windows
 ```
 
 4. **Execute o aplicativo:**
