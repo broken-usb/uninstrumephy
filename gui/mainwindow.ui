@@ -559,36 +559,6 @@
                 <property name="enabled">
                  <bool>false</bool>
                 </property>
-                <item>
-                 <property name="text">
-                  <string>guitar</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>bass</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>drums</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>piano</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>vocals</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>other</string>
-                 </property>
-                </item>
                </widget>
               </item>
              </layout>

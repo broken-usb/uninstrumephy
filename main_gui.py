@@ -302,7 +302,31 @@ class MainWindow(QDialog, Ui_Dialog):
             logger.info("Seleção de arquivo cancelada pelo usuário.")
             return
 
-        file_size_mb = Path(file_name).stat().st_size / (1024 * 1024)
+        file_path_obj = Path(file_name)
+
+        try:
+            file_size_bytes = file_path_obj.stat().st_size
+        except OSError as exc:
+            logger.error(f"Não foi possível acessar o arquivo selecionado: {exc}")
+            QMessageBox.critical(
+                self,
+                "Arquivo inacessível",
+                f"Não foi possível acessar o arquivo selecionado:\n{file_name}\n\n"
+                f"Verifique se ele ainda existe e se você tem permissão de leitura.",
+            )
+            return
+
+        if file_size_bytes == 0:
+            logger.warning(f"Arquivo selecionado está vazio (0 bytes): {file_name}")
+            QMessageBox.warning(
+                self,
+                "Arquivo vazio",
+                f"O arquivo selecionado está vazio (0 bytes):\n{file_name}\n\n"
+                f"Selecione um arquivo de áudio válido.",
+            )
+            return
+
+        file_size_mb = file_size_bytes / (1024 * 1024)
         logger.info(f"Arquivo carregado: {file_name} ({file_size_mb:.2f} MB)")
         self.path_original = file_name
 
@@ -347,10 +371,13 @@ class MainWindow(QDialog, Ui_Dialog):
         # Invalida resultados anteriores de stems/análise
         self.path_guitarra  = ""
         self.path_stems_dir = ""
+        self.last_params    = {}
         self.btn_play_guitar.setEnabled(False)
         self.btn_stop_guitar.setEnabled(False)
+        self.combo_stems.clear()
         self.combo_stems.setEnabled(False)
         self.btn_run_analysis.setEnabled(False)
+        self.btn_send_hardware.setEnabled(False)
 
         self.progress_bar.setValue(0)
         self._set_status("Carregando metadados…")
@@ -446,20 +473,84 @@ class MainWindow(QDialog, Ui_Dialog):
         self.btn_load.setEnabled(True)
         self.btn_play_guitar.setEnabled(True)
         self.btn_stop_guitar.setEnabled(False)
-        self.combo_stems.setEnabled(True)
-        self.btn_run_analysis.setEnabled(True)
+
+        self._populate_stems_combo(stems_dir)
 
         self._set_status("Faixas separadas com sucesso!")
+
+    def _populate_stems_combo(self, stems_dir: str) -> None:
+        """
+        Popula o combo_stems com os stems realmente encontrados em disco,
+        em vez de assumir uma lista fixa — evita mostrar opções que não
+        existem caso o modelo Demucs mude (ex.: 4 stems em vez de 6) ou
+        algum arquivo não tenha sido gerado por algum motivo.
+        """
+        stem_files = sorted(Path(stems_dir).glob("*.wav"))
+        stem_names = [f.stem for f in stem_files]
+
+        logger.debug(f"Stems encontrados em disco: {stem_names}")
+
+        self.combo_stems.blockSignals(True)
+        self.combo_stems.clear()
+
+        if not stem_names:
+            logger.warning(
+                f"Nenhum arquivo .wav encontrado em {stems_dir} após a separação."
+            )
+            self.combo_stems.setEnabled(False)
+            self.btn_run_analysis.setEnabled(False)
+            self.btn_play_guitar.setEnabled(False)
+            self.combo_stems.blockSignals(False)
+            QMessageBox.warning(
+                self,
+                "Nenhuma faixa encontrada",
+                "A separação terminou, mas nenhum arquivo de áudio foi "
+                "encontrado na pasta de saída. Verifique os logs para mais "
+                "detalhes.",
+            )
+            return
+
+        self.combo_stems.addItems(stem_names)
+        self.combo_stems.setEnabled(True)
+
+        # Prioriza 'guitar' como seleção inicial, se existir; senão, o primeiro
+        default_index = stem_names.index("guitar") if "guitar" in stem_names else 0
+        self.combo_stems.setCurrentIndex(default_index)
+
+        self.combo_stems.blockSignals(False)
+        self.btn_run_analysis.setEnabled(True)
 
     # Análise
 
     def start_analysis(self) -> None:
-        logger.info("Iniciando workflow análise.")
+        stem_name = self.combo_stems.currentText()
+
+        if not stem_name:
+            QMessageBox.warning(
+                self,
+                "Nenhuma faixa selecionada",
+                "Selecione uma faixa isolada antes de executar o Tone Matching.",
+            )
+            return
+
+        stem_path = Path(self.path_stems_dir) / f"{stem_name}.wav"
+
+        if not stem_path.exists():
+            logger.warning(f"Stem selecionado não encontrado em disco: {stem_path}")
+            QMessageBox.critical(
+                self,
+                "Arquivo não encontrado",
+                f"A faixa '{stem_name}.wav' não foi encontrada em disco.\n"
+                f"Tente executar a separação novamente.",
+            )
+            return
+
+        logger.info(f"Iniciando workflow análise (faixa selecionada: {stem_name}).")
         self.btn_run_analysis.setEnabled(False)
         self.btn_load.setEnabled(False)
         self.progress_bar.setRange(0, 0)
 
-        self.analysis_thread = AnalysisWorker(self.path_guitarra)
+        self.analysis_thread = AnalysisWorker(str(stem_path))
         self.analysis_thread.status.connect(self._set_status)
         self.analysis_thread.finished.connect(self._on_analysis_finished)
         self.analysis_thread.error.connect(self._on_error)
@@ -554,7 +645,7 @@ class MainWindow(QDialog, Ui_Dialog):
             self._set_status("Parâmetros enviados para o pedal!")
 
     def _on_hardware_error(self, err_msg: str) -> None:
-        logger.error("Erro ao enviar para a ESP32-S3.")
+        logger.error(f"Erro ao enviar para a ESP32-S3:\n{err_msg}")
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
 
@@ -566,7 +657,9 @@ class MainWindow(QDialog, Ui_Dialog):
         QMessageBox.critical(
             self,
             "Erro de comunicação",
-            f"Não foi possível enviar os parâmetros para a ESP32-S3:\n\n{err_msg}",
+            f"Não foi possível enviar os parâmetros para a ESP32-S3:\n\n"
+            f"{self._friendly_error_summary(err_msg)}\n\n"
+            f"Detalhes completos foram registrados no terminal/log.",
         )
 
     # Playback original
@@ -630,8 +723,10 @@ class MainWindow(QDialog, Ui_Dialog):
                 logger.warning(f"Stem solicitado não encontrado: {stem_file}")
                 QMessageBox.warning(
                     self,
-                    "Aviso",
-                    f"A faixa '{faixa}.wav' não foi encontrada.\n{stem_file}",
+                    "Arquivo não encontrado",
+                    f"A faixa '{faixa}.wav' não foi encontrada em disco.\n\n"
+                    f"Ela pode ter sido movida ou apagada após a separação. "
+                    f"Tente executar a separação novamente.",
                 )
                 return
 
@@ -680,13 +775,36 @@ class MainWindow(QDialog, Ui_Dialog):
         self.progress_bar.setValue(0)
         self.btn_load.setEnabled(True)
 
+        # Corrige o botão de análise após um erro de separação: sem stems
+        # disponíveis, não há como o combo estar em um estado válido.
+        if not self.path_guitarra:
+            self.combo_stems.clear()
+            self.combo_stems.setEnabled(False)
+
         # Reabilita apenas os botões que fazem sentido no estado atual
         self.btn_run_demucs.setEnabled(bool(self.path_original))
         self.btn_run_analysis.setEnabled(bool(self.path_guitarra))
         self.btn_send_hardware.setEnabled(bool(self.last_params))
 
         self._set_status("Erro no processamento.")
-        QMessageBox.critical(self, "Erro", err_msg)
+        QMessageBox.critical(
+            self,
+            "Erro",
+            f"{self._friendly_error_summary(err_msg)}\n\n"
+            f"Detalhes completos foram registrados no terminal/log.",
+        )
+
+    @staticmethod
+    def _friendly_error_summary(err_msg: str) -> str:
+        """
+        Extrai a última linha útil de um traceback do Python para exibir
+        um resumo legível na UI, em vez do stack trace completo.
+        Se não for possível extrair, devolve o texto original.
+        """
+        lines = [line.strip() for line in err_msg.strip().splitlines() if line.strip()]
+        if not lines:
+            return "Ocorreu um erro inesperado."
+        return lines[-1]
 
     # Utilitários
 
