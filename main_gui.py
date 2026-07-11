@@ -141,7 +141,7 @@ class AnalysisWorker(QThread):
 
 class HardwareWorker(QThread):
 
-    finished = pyqtSignal()
+    finished = pyqtSignal(bool)   # True se foi enviado em modo simulado (MOCK)
     error    = pyqtSignal(str)
     status   = pyqtSignal(str)
 
@@ -155,8 +155,9 @@ class HardwareWorker(QThread):
             logger.info("Iniciando envio para a ESP32-S3.")
 
             link = ESP32Link(port=self.port)
+            was_mock = link.is_mock
 
-            if link.is_mock:
+            if was_mock:
                 self.status.emit(
                     "Nenhuma placa detectada — simulando envio (modo MOCK)…"
                 )
@@ -167,7 +168,7 @@ class HardwareWorker(QThread):
             link.close()
 
             logger.info("Envio para a ESP32-S3 concluído.")
-            self.finished.emit()
+            self.finished.emit(was_mock)
 
         except HardwareLinkError as exc:
             logger.exception("Erro de comunicação com a ESP32-S3.")
@@ -492,7 +493,7 @@ class MainWindow(QDialog, Ui_Dialog):
         self.hardware_thread.error.connect(self._on_hardware_error)
         self.hardware_thread.start()
 
-    def _on_hardware_finished(self) -> None:
+    def _on_hardware_finished(self, was_mock: bool) -> None:
         logger.info("Workflow de envio para hardware finalizado.")
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
@@ -501,7 +502,21 @@ class MainWindow(QDialog, Ui_Dialog):
         self.btn_run_analysis.setEnabled(True)
         self.btn_send_hardware.setEnabled(True)
 
-        self._set_status("Parâmetros enviados para o pedal!")
+        if was_mock:
+            self._set_status(
+                "Simulação concluída — nenhuma placa foi encontrada."
+            )
+            QMessageBox.information(
+                self,
+                "Envio simulado (sem hardware)",
+                "Nenhuma ESP32-S3 foi detectada na porta USB.\n\n"
+                "Os parâmetros NÃO foram enviados para uma placa real — "
+                "apenas simulados (modo MOCK), para fins de teste.\n\n"
+                "Conecte a placa via USB e tente novamente quando ela "
+                "estiver disponível."
+            )
+        else:
+            self._set_status("Parâmetros enviados para o pedal!")
 
     def _on_hardware_error(self, err_msg: str) -> None:
         logger.error("Erro ao enviar para a ESP32-S3.")
