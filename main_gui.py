@@ -18,6 +18,7 @@ from tinytag import TinyTag
 from gui.ui_mainwindow import Ui_Dialog
 from core.separator import AudioSeparator
 from core.analyzer import AudioAnalyzer
+from core.hardware import ESP32Link, HardwareLinkError
 
 # Logging
 
@@ -136,6 +137,47 @@ class AnalysisWorker(QThread):
             self.error.emit(traceback.format_exc())
 
 
+# Hardware worker
+
+class HardwareWorker(QThread):
+
+    finished = pyqtSignal()
+    error    = pyqtSignal(str)
+    status   = pyqtSignal(str)
+
+    def __init__(self, params: dict, port: str | None = None) -> None:
+        super().__init__()
+        self.params = params
+        self.port = port
+
+    def run(self) -> None:
+        try:
+            logger.info("Iniciando envio para a ESP32-S3.")
+
+            link = ESP32Link(port=self.port)
+
+            if link.is_mock:
+                self.status.emit(
+                    "Nenhuma placa detectada — simulando envio (modo MOCK)…"
+                )
+            else:
+                self.status.emit(f"Conectando à porta {link.port}…")
+
+            link.send_params(self.params, progress_cb=self.status.emit)
+            link.close()
+
+            logger.info("Envio para a ESP32-S3 concluído.")
+            self.finished.emit()
+
+        except HardwareLinkError as exc:
+            logger.exception("Erro de comunicação com a ESP32-S3.")
+            self.error.emit(str(exc))
+
+        except Exception:
+            logger.exception("Erro inesperado durante o envio para hardware.")
+            self.error.emit(traceback.format_exc())
+
+
 # Main window
 
 class MainWindow(QDialog, Ui_Dialog):
@@ -159,6 +201,9 @@ class MainWindow(QDialog, Ui_Dialog):
         self.player_stem    = QMediaPlayer()
         self.player_stem.setAudioOutput(self.audio_out_stem)
 
+        # Últimos parâmetros calculados (necessários para o envio ao hardware)
+        self.last_params: dict = {}
+
         # Conecta sinais
         self._connect_signals()
 
@@ -173,6 +218,7 @@ class MainWindow(QDialog, Ui_Dialog):
         self.btn_load.clicked.connect(self.load_audio_file)
         self.btn_run_demucs.clicked.connect(self.start_demucs)
         self.btn_run_analysis.clicked.connect(self.start_analysis)
+        self.btn_send_hardware.clicked.connect(self.start_send_hardware)
 
         # Atualiza volumes
         self.slider_volume.valueChanged.connect(self._apply_master_volume)
@@ -391,6 +437,9 @@ class MainWindow(QDialog, Ui_Dialog):
         self.btn_load.setEnabled(True)
         self.btn_run_analysis.setEnabled(True)
 
+        self.last_params = params
+        self.btn_send_hardware.setEnabled(True)
+
         gate = params.get("noise_gate_threshold_db", "--")
         eq   = params.get("eq", {})
         is_silent = params.get("is_silent", False)
@@ -416,6 +465,59 @@ class MainWindow(QDialog, Ui_Dialog):
             )
         else:
             self._set_status("Parâmetros calculados com sucesso!")
+
+    # Envio para hardware (ESP32-S3)
+
+    def start_send_hardware(self) -> None:
+        if not self.last_params:
+            QMessageBox.warning(
+                self,
+                "Nenhum parâmetro calculado",
+                "Execute a análise antes de enviar os dados para o pedal.",
+            )
+            return
+
+        logger.info("Iniciando envio para a ESP32-S3.")
+        self.btn_send_hardware.setEnabled(False)
+        self.btn_run_analysis.setEnabled(False)
+        self.btn_load.setEnabled(False)
+        self.progress_bar.setRange(0, 0)
+
+        # port=None → tenta autodetectar a placa; cai em modo simulado
+        # (MOCK) automaticamente se nenhuma porta compatível for encontrada.
+        # Isso permite usar o botão normalmente mesmo sem a placa em mãos.
+        self.hardware_thread = HardwareWorker(self.last_params, port=None)
+        self.hardware_thread.status.connect(self._set_status)
+        self.hardware_thread.finished.connect(self._on_hardware_finished)
+        self.hardware_thread.error.connect(self._on_hardware_error)
+        self.hardware_thread.start()
+
+    def _on_hardware_finished(self) -> None:
+        logger.info("Workflow de envio para hardware finalizado.")
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(100)
+
+        self.btn_load.setEnabled(True)
+        self.btn_run_analysis.setEnabled(True)
+        self.btn_send_hardware.setEnabled(True)
+
+        self._set_status("Parâmetros enviados para o pedal!")
+
+    def _on_hardware_error(self, err_msg: str) -> None:
+        logger.error("Erro ao enviar para a ESP32-S3.")
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+
+        self.btn_load.setEnabled(True)
+        self.btn_run_analysis.setEnabled(bool(self.path_guitarra))
+        self.btn_send_hardware.setEnabled(bool(self.last_params))
+
+        self._set_status("Erro ao enviar para o pedal.")
+        QMessageBox.critical(
+            self,
+            "Erro de comunicação",
+            f"Não foi possível enviar os parâmetros para a ESP32-S3:\n\n{err_msg}",
+        )
 
     # Playback original
 
@@ -521,6 +623,7 @@ class MainWindow(QDialog, Ui_Dialog):
         # Reabilita apenas os botões que fazem sentido no estado atual
         self.btn_run_demucs.setEnabled(bool(self.path_original))
         self.btn_run_analysis.setEnabled(bool(self.path_guitarra))
+        self.btn_send_hardware.setEnabled(bool(self.last_params))
 
         self._set_status("Erro no processamento.")
         QMessageBox.critical(self, "Erro", err_msg)
@@ -582,6 +685,7 @@ class MainWindow(QDialog, Ui_Dialog):
             "demucs_thread",
             "analysis_thread",
             "metadata_thread",
+            "hardware_thread",
         ):
             self._stop_thread(attr)
 

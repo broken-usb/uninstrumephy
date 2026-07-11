@@ -143,6 +143,19 @@ QPushButton#btn_run_analysis:disabled {
     color: #555d7a;
 }
 
+QPushButton#btn_send_hardware {
+    background-color: #8a5a1f;
+    color: #eff0f5;
+    border: 1px solid #e0993a;
+}
+QPushButton#btn_send_hardware:hover   { background-color: #a56d27; }
+QPushButton#btn_send_hardware:pressed { background-color: #6e4718; }
+QPushButton#btn_send_hardware:disabled {
+    background-color: #2a2e42;
+    border-color: #343852;
+    color: #555d7a;
+}
+
 QPushButton#btn_play_orig,
 QPushButton#btn_stop_orig,
 QPushButton#btn_play_guitar,
@@ -460,6 +473,16 @@ QFrame#vlineStatus2 {
           </property>
           <property name="text">
            <string>📊  Tone Matching  (Librosa)</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btn_send_hardware">
+          <property name="enabled">
+           <bool>false</bool>
+          </property>
+          <property name="text">
+           <string>🔌  Enviar para o Pedal  (ESP32-S3)</string>
           </property>
          </widget>
         </item>

@@ -137,6 +137,19 @@ class Ui_Dialog(object):
 "    color: #555d7a;\n"
 "}\n"
 "\n"
+"QPushButton#btn_send_hardware {\n"
+"    background-color: #8a5a1f;\n"
+"    color: #eff0f5;\n"
+"    border: 1px solid #e0993a;\n"
+"}\n"
+"QPushButton#btn_send_hardware:hover   { background-color: #a56d27; }\n"
+"QPushButton#btn_send_hardware:pressed { background-color: #6e4718; }\n"
+"QPushButton#btn_send_hardware:disabled {\n"
+"    background-color: #2a2e42;\n"
+"    border-color: #343852;\n"
+"    color: #555d7a;\n"
+"}\n"
+"\n"
 "QPushButton#btn_play_orig,\n"
 "QPushButton#btn_stop_orig,\n"
 "QPushButton#btn_play_guitar,\n"
@@ -303,6 +316,10 @@ class Ui_Dialog(object):
         self.btn_run_analysis.setEnabled(False)
         self.btn_run_analysis.setObjectName("btn_run_analysis")
         self.leftLayout.addWidget(self.btn_run_analysis)
+        self.btn_send_hardware = QtWidgets.QPushButton(parent=self.frameLeft)
+        self.btn_send_hardware.setEnabled(False)
+        self.btn_send_hardware.setObjectName("btn_send_hardware")
+        self.leftLayout.addWidget(self.btn_send_hardware)
         spacerItem = QtWidgets.QSpacerItem(20, 40, QtWidgets.QSizePolicy.Policy.Minimum, QtWidgets.QSizePolicy.Policy.Expanding)
         self.leftLayout.addItem(spacerItem)
         self.bodyLayout.addWidget(self.frameLeft)
@@ -498,6 +515,7 @@ class Ui_Dialog(object):
         self.lbl_vol_main.setText(_translate("Dialog", "🔊  Volume"))
         self.btn_run_demucs.setText(_translate("Dialog", "⚙  Separar Faixas  (Demucs)"))
         self.btn_run_analysis.setText(_translate("Dialog", "📊  Tone Matching  (Librosa)"))
+        self.btn_send_hardware.setText(_translate("Dialog", "🔌  Enviar para o Pedal  (ESP32-S3)"))
         self.lbl_info.setText(_translate("Dialog", "Nenhuma música carregada  |  00:00"))
         self.lbl_seek_orig.setText(_translate("Dialog", "Orig"))
         self.lbl_seek_stem.setText(_translate("Dialog", "Stem"))
@@ -519,13 +537,3 @@ class Ui_Dialog(object):
         self.lbl_status.setText(_translate("Dialog", "● Status: Aguardando…"))
         self.lbl_gate.setText(_translate("Dialog", "Noise Gate: -- dB"))
         self.lbl_eq.setText(_translate("Dialog", "EQ — Bass: --  |  Mid: --  |  Treble: --"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    Dialog = QtWidgets.QDialog()
-    ui = Ui_Dialog()
-    ui.setupUi(Dialog)
-    Dialog.show()
-    sys.exit(app.exec())
