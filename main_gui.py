@@ -1,4 +1,5 @@
 import sys
+import time
 import logging
 import traceback
 from pathlib import Path
@@ -42,6 +43,7 @@ class MetadataWorker(QThread):
 
     def run(self) -> None:
         try:
+            logger.debug(f"Lendo metadados de: {self.file_path}")
             tag = TinyTag.get(self.file_path, image=True)
 
             image_data = None
@@ -69,6 +71,9 @@ class MetadataWorker(QThread):
                 "duration": int(tag.duration or 0),
                 "image_data": image_data,
             }
+            logger.debug(
+                f"Metadados extraídos com sucesso (capa embutida: {bool(image_data)})."
+            )
             self.finished.emit(params)
 
         except Exception:
@@ -89,10 +94,13 @@ class DemucsWorker(QThread):
         self.audio_path = audio_path
 
     def run(self) -> None:
+        start_time = time.monotonic()
         try:
             logger.info(f"Iniciando separação: {self.audio_path}")
 
             separator = AudioSeparator()
+            logger.debug(f"Device de inferência: {separator.device}")
+
             guitar_path = separator.extract_guitar(
                 self.audio_path,
                 progress_cb=self.status.emit,
@@ -102,7 +110,13 @@ class DemucsWorker(QThread):
                 raise RuntimeError("Falha ao gerar stem de guitarra.")
 
             stems_dir = str(Path(guitar_path).parent)
-            logger.info("Separação concluída.")
+            elapsed = time.monotonic() - start_time
+
+            stems_found = sorted(p.name for p in Path(stems_dir).glob("*.wav"))
+            logger.info(
+                f"Separação concluída em {elapsed:.1f}s. "
+                f"Stems gerados: {stems_found}"
+            )
             self.finished.emit(guitar_path, stems_dir)
 
         except Exception:
@@ -123,13 +137,22 @@ class AnalysisWorker(QThread):
         self.guitar_path = guitar_path
 
     def run(self) -> None:
+        start_time = time.monotonic()
         try:
             logger.info(f"Iniciando análise: {self.guitar_path}")
             self.status.emit("Extraindo parâmetros matemáticos…")
 
             params = AudioAnalyzer().analyze_stem(self.guitar_path)
+            elapsed = time.monotonic() - start_time
 
-            logger.info("Análise concluída.")
+            eq = params.get("eq", {})
+            logger.info(
+                f"Análise concluída em {elapsed:.2f}s. "
+                f"Gate: {params.get('noise_gate_threshold_db')} dB | "
+                f"EQ (bass/mid/treble): "
+                f"{eq.get('bass')}/{eq.get('mid')}/{eq.get('treble')} | "
+                f"Silencioso: {params.get('is_silent')}"
+            )
             self.finished.emit(params)
 
         except Exception:
@@ -276,9 +299,11 @@ class MainWindow(QDialog, Ui_Dialog):
             "Audio Files (*.mp3 *.wav *.flac *.ogg *.aac)",
         )
         if not file_name:
+            logger.info("Seleção de arquivo cancelada pelo usuário.")
             return
 
-        logger.info(f"Arquivo carregado: {file_name}")
+        file_size_mb = Path(file_name).stat().st_size / (1024 * 1024)
+        logger.info(f"Arquivo carregado: {file_name} ({file_size_mb:.2f} MB)")
         self.path_original = file_name
 
         # Para qualquer reprodução anterior
@@ -299,6 +324,7 @@ class MainWindow(QDialog, Ui_Dialog):
 
         # Cancela thread antiga de metadados, se houver
         if getattr(self, "metadata_thread", None) is not None:
+            logger.debug("Cancelando thread de metadados anterior ainda em execução.")
             try:
                 self.metadata_thread.quit()
                 self.metadata_thread.wait(1000)
@@ -311,6 +337,7 @@ class MainWindow(QDialog, Ui_Dialog):
         self.metadata_thread.finished.connect(self._on_metadata_finished)
         self.metadata_thread.error.connect(self._on_metadata_error)
         self.metadata_thread.start()
+        logger.info("Thread de leitura de metadados iniciada.")
 
         # Estado da UI enquanto a leitura ocorre
         self.btn_play_orig.setEnabled(False)
@@ -330,6 +357,9 @@ class MainWindow(QDialog, Ui_Dialog):
 
     def _on_metadata_finished(self, params: dict) -> None:
         if params.get("file_path") != self.path_original:
+            logger.debug(
+                "Metadados recebidos para um arquivo que não é mais o atual; descartando."
+            )
             return
 
         title = params.get("title", Path(self.path_original).stem)
@@ -338,6 +368,11 @@ class MainWindow(QDialog, Ui_Dialog):
         ano = params.get("year", "—")
         duration_raw = int(params.get("duration", 0) or 0)
         duration_str = self._format_duration(duration_raw)
+
+        logger.info(
+            f"Metadados carregados — Título: {title} | Artista: {artista} | "
+            f"Álbum: {album} ({ano}) | Duração: {duration_str}"
+        )
 
         self.lbl_info.setText(f"{title}  |  {duration_str}")
         self.lbl_metadata.setText(
@@ -538,23 +573,28 @@ class MainWindow(QDialog, Ui_Dialog):
 
     def toggle_original(self) -> None:
         if not self.path_original:
+            logger.debug("Toggle de reprodução ignorado: nenhum arquivo carregado.")
             return
 
         state = self.player_orig.playbackState()
 
         if state == QMediaPlayer.PlaybackState.PlayingState:
+            logger.debug("Pausando reprodução do áudio original.")
             self.player_orig.pause()
 
         elif state == QMediaPlayer.PlaybackState.PausedState:
+            logger.debug("Retomando reprodução do áudio original.")
             self.player_orig.play()
 
         else:   # StoppedState — carrega e inicia
+            logger.info(f"Reproduzindo áudio original: {self.path_original}")
             self.player_orig.setSource(
                 QUrl.fromLocalFile(self.path_original)
             )
             self.player_orig.play()
 
     def stop_original(self) -> None:
+        logger.debug("Parando reprodução do áudio original.")
         self.player_orig.stop()
 
     def _on_orig_state_changed(
@@ -569,14 +609,17 @@ class MainWindow(QDialog, Ui_Dialog):
 
     def toggle_stem(self) -> None:
         if not self.path_stems_dir:
+            logger.debug("Toggle de stem ignorado: nenhuma separação disponível.")
             return
 
         state = self.player_stem.playbackState()
 
         if state == QMediaPlayer.PlaybackState.PlayingState:
+            logger.debug("Pausando reprodução do stem.")
             self.player_stem.pause()
 
         elif state == QMediaPlayer.PlaybackState.PausedState:
+            logger.debug("Retomando reprodução do stem.")
             self.player_stem.play()
 
         else:   # StoppedState — carrega stem selecionado
@@ -584,6 +627,7 @@ class MainWindow(QDialog, Ui_Dialog):
             stem_file = Path(self.path_stems_dir) / f"{faixa}.wav"
 
             if not stem_file.exists():
+                logger.warning(f"Stem solicitado não encontrado: {stem_file}")
                 QMessageBox.warning(
                     self,
                     "Aviso",
@@ -596,6 +640,7 @@ class MainWindow(QDialog, Ui_Dialog):
             self.player_stem.play()
 
     def stop_stem(self) -> None:
+        logger.debug("Parando reprodução do stem.")
         self.player_stem.stop()
 
     def _on_stem_state_changed(
@@ -630,7 +675,7 @@ class MainWindow(QDialog, Ui_Dialog):
     # Erro
 
     def _on_error(self, err_msg: str) -> None:
-        logger.error("Erro recebido pela UI.")
+        logger.error(f"Erro recebido pela UI:\n{err_msg}")
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self.btn_load.setEnabled(True)
@@ -686,6 +731,7 @@ class MainWindow(QDialog, Ui_Dialog):
 
     def closeEvent(self, event) -> None:
         """Para players e aguarda threads antes de fechar a janela."""
+        logger.info("Encerrando aplicação — finalizando threads e players…")
         try:
             self.player_orig.stop()
         except RuntimeError:
@@ -708,6 +754,8 @@ class MainWindow(QDialog, Ui_Dialog):
             event.accept()
         except RuntimeError:
             pass
+
+        logger.info("Aplicação encerrada.")
 
 
 # Entry point

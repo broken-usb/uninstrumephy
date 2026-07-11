@@ -71,6 +71,11 @@ class AudioAnalyzer:
             mono=True,
             dtype=np.float32,
         )
+        duration_s = len(y) / sr if sr else 0.0
+        logger.debug(
+            f"Áudio carregado: {len(y)} amostras, sr={sr} Hz, "
+            f"duração≈{duration_s:.2f}s"
+        )
 
         if y.size == 0 or np.max(np.abs(y)) < MIN_AMPLITUDE:
             logger.warning(f"Stem silencioso ou vazio: {filepath}")
@@ -90,8 +95,14 @@ class AudioAnalyzer:
 
         if rms.size == 0:
             reference_rms = MIN_AMPLITUDE
+            logger.debug("Nenhum frame de RMS acima do limiar mínimo; usando fallback.")
         else:
             reference_rms = float(np.percentile(rms, self.GATE_RMS_PERCENTILE))
+
+        logger.debug(
+            f"RMS de referência (percentil {self.GATE_RMS_PERCENTILE}): "
+            f"{reference_rms:.6f}"
+        )
 
         threshold_db = float(
             librosa.amplitude_to_db(
@@ -100,6 +111,10 @@ class AudioAnalyzer:
             )[0]
         )
         gate_target = round(threshold_db + self.GATE_OFFSET_DB, 2)
+        logger.debug(
+            f"Threshold de referência: {threshold_db:.2f} dB | "
+            f"Gate final (offset {self.GATE_OFFSET_DB} dB): {gate_target} dB"
+        )
 
         # FFT / bandas com resolução menor para reduzir custo
         stft = np.abs(
@@ -121,6 +136,11 @@ class AudioAnalyzer:
         bass_e   = band_energy(*self.BAND_BASS)
         mid_e    = band_energy(*self.BAND_MID)
         treble_e = band_energy(*self.BAND_TREBLE)
+
+        logger.debug(
+            f"Energias brutas por banda — bass: {bass_e:.6f} | "
+            f"mid: {mid_e:.6f} | treble: {treble_e:.6f}"
+        )
 
         total = bass_e + mid_e + treble_e + 1e-6
 

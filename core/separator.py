@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -95,6 +96,7 @@ class AudioSeparator:
 
         out_dir = self._cache_dir_for(audio_path)
         out_dir.mkdir(parents=True, exist_ok=True)
+        logger.debug(f"Diretório de cache: {out_dir}")
 
         target_path = out_dir / f"{stem_name}.wav"
 
@@ -107,6 +109,7 @@ class AudioSeparator:
 
         # Leitura do áudio
         self._notify(progress_cb, "Carregando áudio…")
+        load_start = time.monotonic()
 
         wav = AudioFile(str(audio_path)).read(
             streams=0,
@@ -120,12 +123,23 @@ class AudioSeparator:
         if wav.dim() == 2:
             wav = wav.unsqueeze(0)
 
+        logger.debug(
+            f"Áudio carregado em {time.monotonic() - load_start:.2f}s "
+            f"(shape={tuple(wav.shape)})"
+        )
+
         # Inferência
         self._notify(progress_cb, "Executando separação Demucs (IA)…")
         logger.info("Executando separação Demucs…")
+        infer_start = time.monotonic()
 
         with torch.no_grad():
             sources = apply_model(self.model, wav, device=self.device)
+
+        logger.info(
+            f"Inferência Demucs concluída em "
+            f"{time.monotonic() - infer_start:.2f}s"
+        )
 
         sources = sources[0]   # remove dimensão de batch
 
