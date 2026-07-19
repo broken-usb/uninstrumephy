@@ -37,7 +37,7 @@ cd uninstrumephy
 python -m venv .venv
 ```
 ```bash
-source .venv/bin/activate # Linux
+source .venv/bin/activate # Linux (Bash)
 ```
 
 3. **Instale as dependências:**
