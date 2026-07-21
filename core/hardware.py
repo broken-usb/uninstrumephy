@@ -86,7 +86,10 @@ class ESP32Link:
 
         try:
             self._conn = serial.Serial(
-                self.port, self.BAUDRATE, timeout=self.TIMEOUT_S
+                self.port,
+                self.BAUDRATE,
+                timeout=self.TIMEOUT_S,
+                write_timeout=self.TIMEOUT_S,
             )
             # Aguarda o boot/reset da placa após abrir a porta
             time.sleep(self.BOOT_DELAY_S)
@@ -137,6 +140,11 @@ class ESP32Link:
             self._conn.flush()
             logger.info(f"Parâmetros enviados: {payload}")
             self._notify(progress_cb, "Envio concluído.")
+        except serial.SerialTimeoutException as exc:
+            raise HardwareLinkError(
+                f"Timeout ao enviar dados para {self.port}: a placa não "
+                f"respondeu a tempo (verifique o cabo/conexão). Detalhe: {exc}"
+            ) from exc
         except serial.SerialException as exc:
             raise HardwareLinkError(f"Falha ao enviar dados: {exc}") from exc
 
