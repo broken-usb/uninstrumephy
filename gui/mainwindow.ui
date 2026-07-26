@@ -19,225 +19,6 @@
   <property name="windowTitle">
    <string>Tone Matcher</string>
   </property>
-  <property name="styleSheet">
-   <string notr="true">
-QDialog {
-    background-color: #1b1e2b;
-    font-family: 'Noto Sans', 'Segoe UI', sans-serif;
-    font-size: 12px;
-    color: #eff0f5;
-}
-
-QFrame#frameHeader {
-    background-color: #232637;
-    border-bottom: 1px solid #343852;
-}
-QFrame#frameLeft {
-    background-color: #232637;
-    border-right: 1px solid #343852;
-}
-QFrame#frameInfo {
-    background-color: #2a2e42;
-    border-bottom: 1px solid #343852;
-}
-QFrame#frameMetadata {
-    background-color: #232637;
-    border-bottom: 1px solid #343852;
-}
-QFrame#framePlayback {
-    background-color: #2a2e42;
-    border-bottom: 1px solid #343852;
-}
-QFrame#frameStatus {
-    background-color: #1e2130;
-    border-top: 1px solid #343852;
-}
-
-QLabel {
-    color: #eff0f5;
-    background-color: transparent;
-    border: none;
-}
-QLabel#lbl_cover {
-    background-color: #2a2e42;
-    border: 1px solid #343852;
-    border-radius: 10px;
-    color: #555d7a;
-    font-size: 36px;
-    qproperty-alignment: AlignCenter;
-}
-QLabel#lbl_filepath {
-    color: #8e94b0;
-    border: 1px solid #343852;
-    border-radius: 5px;
-    background-color: #2a2e42;
-    padding: 0 8px;
-}
-QLabel#lbl_info {
-    font-size: 13px;
-    font-weight: bold;
-    color: #eff0f5;
-}
-QLabel#lbl_metadata {
-    color: #8e94b0;
-    font-size: 11px;
-}
-QLabel#lbl_status  { color: #5b9bd5; }
-QLabel#lbl_gate    { color: #8e94b0; }
-QLabel#lbl_eq      { color: #8e94b0; }
-QLabel#lbl_section_orig,
-QLabel#lbl_section_stem {
-    color: #555d7a;
-    font-size: 10px;
-    letter-spacing: 1px;
-}
-QLabel#lbl_vol_main,
-QLabel#lbl_vol_orig,
-QLabel#lbl_vol_stem,
-QLabel#lbl_seek_orig,
-QLabel#lbl_seek_stem {
-    color: #555d7a;
-    font-size: 10px;
-}
-
-QPushButton {
-    background-color: #5b9bd5;
-    color: #ffffff;
-    border: none;
-    border-radius: 6px;
-    padding: 5px 10px;
-    font-weight: 500;
-}
-QPushButton:hover   { background-color: #72aedf; }
-QPushButton:pressed { background-color: #4a87bf; }
-QPushButton:disabled {
-    background-color: #2a2e42;
-    color: #555d7a;
-}
-
-QPushButton#btn_load { font-weight: bold; }
-
-QPushButton#btn_run_demucs {
-    background-color: #2d5540;
-    color: #eff0f5;
-    border: 1px solid #27ae60;
-}
-QPushButton#btn_run_demucs:hover   { background-color: #3a6e52; }
-QPushButton#btn_run_demucs:pressed { background-color: #244533; }
-QPushButton#btn_run_demucs:disabled {
-    background-color: #2a2e42;
-    border-color: #343852;
-    color: #555d7a;
-}
-
-QPushButton#btn_run_analysis {
-    background-color: #35358a;
-    color: #eff0f5;
-    border: 1px solid #5b9bd5;
-}
-QPushButton#btn_run_analysis:hover   { background-color: #4040a0; }
-QPushButton#btn_run_analysis:pressed { background-color: #28286e; }
-QPushButton#btn_run_analysis:disabled {
-    background-color: #2a2e42;
-    border-color: #343852;
-    color: #555d7a;
-}
-
-QPushButton#btn_play_orig,
-QPushButton#btn_stop_orig,
-QPushButton#btn_play_guitar,
-QPushButton#btn_stop_guitar {
-    border-radius: 18px;
-    min-width:  36px;
-    max-width:  36px;
-    min-height: 36px;
-    max-height: 36px;
-    font-size: 14px;
-    padding: 0;
-}
-QPushButton#btn_play_orig            { background-color: #5b9bd5; }
-QPushButton#btn_play_orig:hover      { background-color: #72aedf; }
-QPushButton#btn_play_orig:disabled   { background-color: #2a2e42; color: #555d7a; }
-QPushButton#btn_play_guitar          { background-color: #a855f7; }
-QPushButton#btn_play_guitar:hover    { background-color: #c77dff; }
-QPushButton#btn_play_guitar:disabled { background-color: #2a2e42; color: #555d7a; }
-QPushButton#btn_stop_orig,
-QPushButton#btn_stop_guitar {
-    background-color: #2a2e42;
-    border: 1px solid #343852;
-    color: #8e94b0;
-}
-QPushButton#btn_stop_orig:hover,
-QPushButton#btn_stop_guitar:hover  { background-color: #343852; }
-QPushButton#btn_stop_orig:disabled,
-QPushButton#btn_stop_guitar:disabled { color: #555d7a; }
-
-QProgressBar {
-    background-color: #343852;
-    border-radius: 3px;
-    border: none;
-    max-height: 6px;
-    text-align: center;
-    color: transparent;
-}
-QProgressBar::chunk {
-    background-color: #5b9bd5;
-    border-radius: 3px;
-}
-
-QSlider::groove:horizontal {
-    height: 4px;
-    background: #343852;
-    border-radius: 2px;
-    margin: 0;
-}
-QSlider::handle:horizontal {
-    width: 14px;
-    height: 14px;
-    margin: -5px 0;
-    background: #5b9bd5;
-    border-radius: 7px;
-    border: none;
-}
-QSlider::sub-page:horizontal {
-    background: #5b9bd5;
-    border-radius: 2px;
-}
-QSlider#slider_vol_stem::handle:horizontal,
-QSlider#slider_seek_stem::handle:horizontal  { background: #a855f7; }
-QSlider#slider_vol_stem::sub-page:horizontal,
-QSlider#slider_seek_stem::sub-page:horizontal { background: #a855f7; }
-QSlider:disabled::handle:horizontal    { background: #343852; }
-QSlider:disabled::sub-page:horizontal  { background: #343852; }
-
-QComboBox {
-    background-color: #232637;
-    color: #eff0f5;
-    border: 1px solid #343852;
-    border-radius: 5px;
-    padding: 3px 8px;
-    min-height: 24px;
-}
-QComboBox:hover   { border-color: #5b9bd5; }
-QComboBox:disabled { color: #555d7a; }
-QComboBox::drop-down { border: none; width: 20px; }
-QComboBox QAbstractItemView {
-    background-color: #2a2e42;
-    color: #eff0f5;
-    border: 1px solid #343852;
-    selection-background-color: #5b9bd5;
-    outline: none;
-}
-
-QFrame#lineSep,
-QFrame#vlineSep,
-QFrame#vlineStatus1,
-QFrame#vlineStatus2 {
-    color: #343852;
-    background-color: #343852;
-}
-   </string>
-  </property>
   <layout class="QVBoxLayout" name="mainLayout">
    <property name="spacing">
     <number>0</number>
@@ -460,6 +241,16 @@ QFrame#vlineStatus2 {
           </property>
           <property name="text">
            <string>📊  Tone Matching  (Librosa)</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QPushButton" name="btn_send_hardware">
+          <property name="enabled">
+           <bool>false</bool>
+          </property>
+          <property name="text">
+           <string>🔌  Enviar para o Pedal  (ESP32-S3)</string>
           </property>
          </widget>
         </item>
@@ -768,36 +559,6 @@ QFrame#vlineStatus2 {
                 <property name="enabled">
                  <bool>false</bool>
                 </property>
-                <item>
-                 <property name="text">
-                  <string>guitar</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>bass</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>drums</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>piano</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>vocals</string>
-                 </property>
-                </item>
-                <item>
-                 <property name="text">
-                  <string>other</string>
-                 </property>
-                </item>
                </widget>
               </item>
              </layout>

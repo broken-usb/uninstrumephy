@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -95,6 +96,7 @@ class AudioSeparator:
 
         out_dir = self._cache_dir_for(audio_path)
         out_dir.mkdir(parents=True, exist_ok=True)
+        logger.debug(f"Diretório de cache: {out_dir}")
 
         target_path = out_dir / f"{stem_name}.wav"
 
@@ -107,6 +109,7 @@ class AudioSeparator:
 
         # Leitura do áudio
         self._notify(progress_cb, "Carregando áudio…")
+        load_start = time.monotonic()
 
         wav = AudioFile(str(audio_path)).read(
             streams=0,
@@ -120,12 +123,23 @@ class AudioSeparator:
         if wav.dim() == 2:
             wav = wav.unsqueeze(0)
 
+        logger.debug(
+            f"Áudio carregado em {time.monotonic() - load_start:.2f}s "
+            f"(shape={tuple(wav.shape)})"
+        )
+
         # Inferência
         self._notify(progress_cb, "Executando separação Demucs (IA)…")
         logger.info("Executando separação Demucs…")
+        infer_start = time.monotonic()
 
         with torch.no_grad():
             sources = apply_model(self.model, wav, device=self.device)
+
+        logger.info(
+            f"Inferência Demucs concluída em "
+            f"{time.monotonic() - infer_start:.2f}s"
+        )
 
         sources = sources[0]   # remove dimensão de batch
 
@@ -162,12 +176,30 @@ class AudioSeparator:
     def _cache_dir_for(self, audio_path: Path) -> Path:
         """
         Gera um diretório de cache único por arquivo de entrada, baseado
-        no caminho absoluto (evita colisão entre arquivos de mesmo nome
-        localizados em pastas diferentes).
+        no NOME do arquivo + seu TAMANHO em bytes (não no caminho absoluto).
+
+        Isso garante duas coisas ao mesmo tempo:
+          - Evita colisão entre arquivos de mesmo nome mas conteúdo
+            diferente (tamanhos diferentes → hash diferente).
+          - Sobrevive à movimentação do arquivo entre pastas (ex.: o
+            usuário move a música de Downloads/ para Musicas/TCC/), já
+            que o caminho absoluto não entra mais no cálculo do hash.
+
+        Se o tamanho do arquivo não puder ser lido (ex.: problema de
+        permissão ou volume de rede instável), cai em um fallback seguro
+        usando o caminho absoluto, para nunca quebrar a separação.
         """
-        digest = hashlib.sha1(
-            str(audio_path.resolve()).encode("utf-8")
-        ).hexdigest()[:10]
+        try:
+            file_size = audio_path.stat().st_size
+            hash_input = f"{audio_path.name}_{file_size}"
+        except OSError as exc:
+            logger.warning(
+                f"Não foi possível ler o tamanho de {audio_path}: {exc}. "
+                f"Usando caminho absoluto como fallback para o cache."
+            )
+            hash_input = str(audio_path.resolve())
+
+        digest = hashlib.sha1(hash_input.encode("utf-8")).hexdigest()[:10]
         safe_name = f"{audio_path.stem}_{digest}"
         return self.output_dir / self.MODEL_NAME / safe_name
 

@@ -28,12 +28,16 @@ class AudioAnalyzer:
     BAND_MID:    tuple[int, int] = (250, 2_000)
     BAND_TREBLE: tuple[int, int] = (2_000, 6_000)
 
-    # Offset abaixo do RMS de referência para calcular o threshold do gate
-    GATE_OFFSET_DB: float = -12.0
+    # Offset ACIMA do noise floor para dar margem de segurança ao gate
+    # (o gate deve abrir um pouco acima do ruído de fundo, não no meio do
+    # sinal útil — por isso o offset agora é positivo).
+    GATE_OFFSET_DB: float = 6.0
 
-    # Percentil usado como referência de RMS (mais robusto que a média em
-    # faixas com trechos longos de silêncio ou dinâmica muito variável)
-    GATE_RMS_PERCENTILE: float = 75.0
+    # Percentil usado como referência de RMS para estimar o "noise floor"
+    # (piso de ruído) da faixa. Um percentil baixo (ex.: 10) captura os
+    # trechos mais silenciosos — que representam o ruído de fundo — em vez
+    # dos trechos mais altos, que representariam o próprio sinal musical.
+    GATE_RMS_PERCENTILE: float = 10.0
 
     def analyze_stem(self, filepath: str) -> dict:
         """
@@ -71,6 +75,11 @@ class AudioAnalyzer:
             mono=True,
             dtype=np.float32,
         )
+        duration_s = len(y) / sr if sr else 0.0
+        logger.debug(
+            f"Áudio carregado: {len(y)} amostras, sr={sr} Hz, "
+            f"duração≈{duration_s:.2f}s"
+        )
 
         if y.size == 0 or np.max(np.abs(y)) < MIN_AMPLITUDE:
             logger.warning(f"Stem silencioso ou vazio: {filepath}")
@@ -83,23 +92,35 @@ class AudioAnalyzer:
         # Normaliza a onda para reduzir variações extremas de amplitude
         y = normalize(y)
 
-        # RMS / gate — usa percentil ao invés de média para não ser
-        # arrastado por longos trechos de silêncio dentro da faixa
+        # Noise floor / gate — usa percentil baixo do RMS para estimar o
+        # ruído de fundo da faixa, em vez de média (mais robusto contra
+        # trechos de silêncio digital absoluto, que já foram filtrados).
         rms = librosa.feature.rms(y=y, frame_length=1024, hop_length=512)[0]
         rms = rms[rms > MIN_AMPLITUDE]
 
         if rms.size == 0:
             reference_rms = MIN_AMPLITUDE
+            logger.debug("Nenhum frame de RMS acima do limiar mínimo; usando fallback.")
         else:
             reference_rms = float(np.percentile(rms, self.GATE_RMS_PERCENTILE))
 
-        threshold_db = float(
+        logger.debug(
+            f"Noise floor estimado (percentil {self.GATE_RMS_PERCENTILE} do RMS): "
+            f"{reference_rms:.6f}"
+        )
+
+        noise_floor_db = float(
             librosa.amplitude_to_db(
                 np.array([reference_rms], dtype=np.float32),
                 ref=1.0,
             )[0]
         )
-        gate_target = round(threshold_db + self.GATE_OFFSET_DB, 2)
+        gate_target = max(-80.0, round(noise_floor_db + self.GATE_OFFSET_DB, 2))
+        logger.debug(
+            f"Noise floor: {noise_floor_db:.2f} dB | "
+            f"Gate final (noise floor + {self.GATE_OFFSET_DB} dB de margem): "
+            f"{gate_target} dB"
+        )
 
         # FFT / bandas com resolução menor para reduzir custo
         stft = np.abs(
@@ -121,6 +142,11 @@ class AudioAnalyzer:
         bass_e   = band_energy(*self.BAND_BASS)
         mid_e    = band_energy(*self.BAND_MID)
         treble_e = band_energy(*self.BAND_TREBLE)
+
+        logger.debug(
+            f"Energias brutas por banda — bass: {bass_e:.6f} | "
+            f"mid: {mid_e:.6f} | treble: {treble_e:.6f}"
+        )
 
         total = bass_e + mid_e + treble_e + 1e-6
 

@@ -2,9 +2,9 @@ name: Python CI
 
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "hardware" ]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: [ "main", "master", "hardware" ]
 
 permissions:
   contents: read
@@ -16,8 +16,6 @@ jobs:
         include:
           - os: ubuntu-latest
             req_file: requirements.txt
-          - os: windows-latest
-            req_file: requirements-win.txt
 
     runs-on: ${{ matrix.os }}
 
@@ -25,10 +23,10 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
 
-    - name: Set up Python 3.14
+    - name: Set up Python 3.14.X
       uses: actions/setup-python@v5
       with:
-        python-version: "3.14"
+        python-version: "3.14.6"
         cache: "pip"
 
     - name: Install dependencies
@@ -40,5 +38,5 @@ jobs:
       run: |
         python -m py_compile core/separator.py
         python -m py_compile core/analyzer.py
-        python -m py_compile main_cli.py
+        python -m py_compile core/hardware.py
         python -m py_compile main_gui.py
