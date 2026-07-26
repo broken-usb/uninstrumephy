@@ -13,9 +13,11 @@ Interface gráfica inteligente para **Tone Matching** (casamento de timbres de g
 
 ## Como Instalar e Rodar
 
-0. **Instale o Python 3.14+**
+Atualmente o projeto só tem suporte oficial ao Linux e dentro de ambientes virtuais do Python 3.14 ou superior.
+
+1. **Instale o Python 3.14+**
 ```bash
-sudo apt install -y python3-full # Ubuntu
+sudo apt update && sudo apt install python3-full # Ubuntu
 ```
 
 ```bash
@@ -23,16 +25,29 @@ sudo pacman -S python # Arch
 ```
 
 ```bash
-sudo dnf install python # Fedora
+sudo dnf install python # RHEL/Fedora
 ```
 
-1. **Clone o repositório:**
+2. **Instale o FFmpeg**
+```bash
+sudo apt update && sudo apt install ffmpeg # Ubuntu
+```
+
+```bash
+sudo pacman -S ffmpeg # Arch
+```
+
+```bash
+sudo dnf swap ffmpeg-free ffmpeg --allowerasing # RHEL/Fedora, Precisa do RPM Fusion
+```
+
+3. **Clone o repositório:**
 ```bash
 git clone https://github.com/broken-usb/uninstrumephy.git
 cd uninstrumephy
 ```
 
-2. **Crie e ative seu ambiente virtual (`venv`):**
+4. **Crie e ative seu ambiente virtual (`venv`):**
 ```bash
 python -m venv .venv
 ```
@@ -40,15 +55,15 @@ python -m venv .venv
 source .venv/bin/activate # Linux (Bash)
 ```
 
-3. **Instale as dependências:**
+5. **Instale as dependências:**
 ```bash
 pip install --upgrade pip
 ```
 ```bash
-pip install -r requirements.txt # Linux
+pip install -r requirements.txt
 ```
 
-4. **Execute o aplicativo:**
+6. **Execute o aplicativo:**
 ```bash
 python main_gui.py
 ```
