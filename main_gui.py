@@ -17,6 +17,7 @@ from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from tinytag import TinyTag
 
 from gui.ui_mainwindow import Ui_Dialog
+from gui.plots import WaveformPlot, EQCurvePlot
 from core.separator import AudioSeparator
 from core.analyzer import AudioAnalyzer
 from core.hardware import ESP32Link, HardwareLinkError
@@ -227,6 +228,17 @@ class MainWindow(QDialog, Ui_Dialog):
 
         # Últimos parâmetros calculados (necessários para o envio ao hardware)
         self.last_params: dict = {}
+        # Nome do stem que gerou os últimos parâmetros calculados (para
+        # detectar quando o combo é trocado e os dados ficam desatualizados)
+        self.last_analyzed_stem: str = ""
+
+        # Gráficos de forma de onda e curva de EQ, injetados nos
+        # containers vazios definidos no .ui
+        self.waveform_plot = WaveformPlot()
+        self.waveformContainerLayout.addWidget(self.waveform_plot)
+
+        self.eq_curve_plot = EQCurvePlot()
+        self.eqCurveContainerLayout.addWidget(self.eq_curve_plot)
 
         # Conecta sinais
         self._connect_signals()
@@ -372,12 +384,18 @@ class MainWindow(QDialog, Ui_Dialog):
         self.path_guitarra  = ""
         self.path_stems_dir = ""
         self.last_params    = {}
+        self.last_analyzed_stem = ""
         self.btn_play_guitar.setEnabled(False)
         self.btn_stop_guitar.setEnabled(False)
         self.combo_stems.clear()
         self.combo_stems.setEnabled(False)
         self.btn_run_analysis.setEnabled(False)
         self.btn_send_hardware.setEnabled(False)
+        self.lbl_gate.setText("Noise Gate: -- dB")
+        self.lbl_eq.setText("EQ — Bass: --  |  Mid: --  |  Treble: --")
+        self.lbl_analyzed_stem.setText("")
+        self.waveform_plot.clear_plot()
+        self.eq_curve_plot.clear_plot()
 
         self.progress_bar.setValue(0)
         self._set_status("Carregando metadados…")
@@ -550,6 +568,10 @@ class MainWindow(QDialog, Ui_Dialog):
         self.btn_load.setEnabled(False)
         self.progress_bar.setRange(0, 0)
 
+        # Guarda qual stem está sendo analisado — usado depois para saber
+        # se o combo foi trocado após a análise (ver _on_stem_selection_changed)
+        self._analyzing_stem = stem_name
+
         self.analysis_thread = AnalysisWorker(str(stem_path))
         self.analysis_thread.status.connect(self._set_status)
         self.analysis_thread.finished.connect(self._on_analysis_finished)
@@ -565,10 +587,13 @@ class MainWindow(QDialog, Ui_Dialog):
         self.btn_run_analysis.setEnabled(True)
 
         self.last_params = params
+        self.last_analyzed_stem = getattr(self, "_analyzing_stem", "")
         self.btn_send_hardware.setEnabled(True)
 
         gate = params.get("noise_gate_threshold_db", "--")
         eq   = params.get("eq", {})
+        eq_curve = params.get("eq_curve", [])
+        waveform = params.get("waveform", {})
         is_silent = params.get("is_silent", False)
 
         self.lbl_gate.setText(f"Noise Gate: {gate} dB")
@@ -577,6 +602,12 @@ class MainWindow(QDialog, Ui_Dialog):
             f"Mid: {eq.get('mid', '--')}  |  "
             f"Treble: {eq.get('treble', '--')}"
         )
+        self.lbl_analyzed_stem.setText(
+            f"Parâmetros calculados a partir da faixa: '{self.last_analyzed_stem}'"
+        )
+
+        self.waveform_plot.plot_waveform(waveform, label=self.last_analyzed_stem)
+        self.eq_curve_plot.plot_eq_curve(eq_curve, label=self.last_analyzed_stem)
 
         if is_silent:
             self._set_status(
@@ -746,9 +777,37 @@ class MainWindow(QDialog, Ui_Dialog):
         self.btn_play_guitar.setText("⏸" if playing else "▶")
         self.btn_stop_guitar.setEnabled(playing or paused)
 
-    def _on_stem_selection_changed(self, _: str) -> None:
-        """Para o stem atual quando o usuário troca de faixa no combo."""
+    def _on_stem_selection_changed(self, new_stem: str) -> None:
+        """
+        Para o stem atual quando o usuário troca de faixa no combo.
+
+        Além disso, se o stem selecionado for diferente do que gerou os
+        últimos parâmetros de Tone Matching (last_params), invalida esses
+        parâmetros e desabilita o envio para o hardware — evita que o
+        usuário envie, sem perceber, valores calculados para um stem
+        diferente do que está selecionado agora (ex.: analisou 'guitar',
+        trocou para 'bass' no combo, e clicaria 'Enviar' pensando que os
+        dados são do 'bass').
+        """
         self.player_stem.stop()
+
+        if new_stem and new_stem != self.last_analyzed_stem and self.last_params:
+            logger.debug(
+                f"Stem selecionado ('{new_stem}') difere do último "
+                f"analisado ('{self.last_analyzed_stem}'); invalidando "
+                f"parâmetros calculados."
+            )
+            self.last_params = {}
+            self.btn_send_hardware.setEnabled(False)
+            self.lbl_gate.setText("Noise Gate: -- dB")
+            self.lbl_eq.setText("EQ — Bass: --  |  Mid: --  |  Treble: --")
+            self.lbl_analyzed_stem.setText("")
+            self.waveform_plot.clear_plot()
+            self.eq_curve_plot.clear_plot()
+            self._set_status(
+                f"Faixa alterada para '{new_stem}' — execute o Tone "
+                f"Matching novamente para esta faixa."
+            )
 
     # Seek
 

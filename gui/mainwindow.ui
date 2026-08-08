@@ -421,6 +421,64 @@
             </property>
            </widget>
           </item>
+          <item>
+           <widget class="QLabel" name="lbl_analyzed_stem">
+            <property name="text">
+             <string></string>
+            </property>
+            <property name="styleSheet">
+             <string notr="true">color: #888;</string>
+            </property>
+           </widget>
+          </item>
+          <item>
+           <widget class="QWidget" name="containerWaveform" native="true">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>90</height>
+             </size>
+            </property>
+            <layout class="QVBoxLayout" name="waveformContainerLayout">
+             <property name="leftMargin">
+              <number>0</number>
+             </property>
+             <property name="topMargin">
+              <number>0</number>
+             </property>
+             <property name="rightMargin">
+              <number>0</number>
+             </property>
+             <property name="bottomMargin">
+              <number>0</number>
+             </property>
+            </layout>
+           </widget>
+          </item>
+          <item>
+           <widget class="QWidget" name="containerEqCurve" native="true">
+            <property name="minimumSize">
+             <size>
+              <width>0</width>
+              <height>100</height>
+             </size>
+            </property>
+            <layout class="QVBoxLayout" name="eqCurveContainerLayout">
+             <property name="leftMargin">
+              <number>0</number>
+             </property>
+             <property name="topMargin">
+              <number>0</number>
+             </property>
+             <property name="rightMargin">
+              <number>0</number>
+             </property>
+             <property name="bottomMargin">
+              <number>0</number>
+             </property>
+            </layout>
+           </widget>
+          </item>
          </layout>
         </widget>
        </item>

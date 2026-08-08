@@ -44,6 +44,12 @@ class AudioAnalyzer:
         Carrega o arquivo de áudio e extrai:
           - noise_gate_threshold_db: threshold sugerido para o noise gate
           - eq: dicionário com energias relativas de bass, mid e treble (0–10)
+          - eq_curve: curva espectral detalhada para visualização gráfica
+            (lista de pontos {freq_hz, db}), não enviada ao hardware —
+            apenas para plotagem na UI
+          - waveform: envelope simplificado da forma de onda (amplitude
+            min/max por bloco), para visualização gráfica sem precisar
+            recarregar o áudio inteiro na UI
           - is_silent: True se o stem não contém sinal audível relevante
 
         Args:
@@ -53,6 +59,8 @@ class AudioAnalyzer:
             {
                 "noise_gate_threshold_db": float,
                 "eq": {"bass": float, "mid": float, "treble": float},
+                "eq_curve": [{"freq_hz": float, "db": float}, ...],
+                "waveform": {"min": [...], "max": [...], "duration_s": float},
                 "is_silent": bool
             }
 
@@ -86,6 +94,8 @@ class AudioAnalyzer:
             return {
                 "noise_gate_threshold_db": -80.0,
                 "eq": {"bass": 0.0, "mid": 0.0, "treble": 0.0},
+                "eq_curve": [],
+                "waveform": {"min": [], "max": [], "duration_s": duration_s},
                 "is_silent": True,
             }
 
@@ -166,15 +176,98 @@ class AudioAnalyzer:
             "treble": round((treble_e / total) * 10, 2),
         }
 
+        eq_curve = self._compute_eq_curve(stft, freqs)
+        waveform = self._compute_waveform_envelope(y, sr)
+
         params: dict = {
             "noise_gate_threshold_db": gate_target,
             "eq": eq,
+            "eq_curve": eq_curve,
+            "waveform": waveform,
             "is_silent": False,
         }
 
-        logger.info(f"Análise concluída: {params}")
+        logger.info(
+            f"Análise concluída: gate={gate_target}dB, eq={eq}, "
+            f"eq_curve com {len(eq_curve)} pontos, "
+            f"waveform com {len(waveform['min'])} blocos"
+        )
 
         return params
+
+    # Curva de EQ para visualização
+
+    N_CURVE_POINTS: int = 40
+    CURVE_FREQ_MIN_HZ: float = 40.0
+    CURVE_FREQ_MAX_HZ: float = 10_000.0
+
+    def _compute_eq_curve(
+        self, stft: np.ndarray, freqs: np.ndarray
+    ) -> list[dict]:
+        """
+        Calcula uma curva espectral suavizada (RMS por banda log-espaçada)
+        para fins de visualização gráfica na UI. Diferente do `eq` de
+        3 bandas usado no envio ao hardware, esta curva tem resolução
+        maior (N_CURVE_POINTS pontos) e não é enviada à ESP32-S3 — serve
+        apenas para o usuário visualizar o formato espectral do stem.
+        """
+        # Bordas log-espaçadas entre CURVE_FREQ_MIN_HZ e CURVE_FREQ_MAX_HZ
+        edges = np.logspace(
+            np.log10(self.CURVE_FREQ_MIN_HZ),
+            np.log10(self.CURVE_FREQ_MAX_HZ),
+            self.N_CURVE_POINTS + 1,
+        )
+
+        curve: list[dict] = []
+        for low, high in zip(edges[:-1], edges[1:]):
+            idx = np.where((freqs >= low) & (freqs < high))[0]
+            center_freq = float(np.sqrt(low * high))  # centro geométrico
+
+            if idx.size == 0:
+                curve.append({"freq_hz": round(center_freq, 1), "db": -80.0})
+                continue
+
+            band_rms = float(np.sqrt(np.mean(np.square(stft[idx, :]))))
+            band_db = float(
+                librosa.amplitude_to_db(
+                    np.array([band_rms + 1e-9], dtype=np.float32), ref=1.0
+                )[0]
+            )
+            curve.append({"freq_hz": round(center_freq, 1), "db": round(band_db, 2)})
+
+        return curve
+
+    # Envelope de forma de onda para visualização
+
+    WAVEFORM_TARGET_POINTS: int = 2000
+
+    def _compute_waveform_envelope(
+        self, y: np.ndarray, sr: int
+    ) -> dict:
+        """
+        Reduz o sinal de áudio a um envelope compacto (mínimo e máximo por
+        bloco), adequado para desenhar a forma de onda na UI sem precisar
+        transferir/recarregar o sinal completo (que pode ter milhões de
+        amostras) para a camada de interface.
+        """
+        n_samples = len(y)
+        if n_samples == 0:
+            return {"min": [], "max": [], "duration_s": 0.0}
+
+        block_size = max(1, n_samples // self.WAVEFORM_TARGET_POINTS)
+        n_blocks = n_samples // block_size
+
+        trimmed = y[: n_blocks * block_size]
+        blocks = trimmed.reshape(n_blocks, block_size)
+
+        mins = blocks.min(axis=1)
+        maxs = blocks.max(axis=1)
+
+        return {
+            "min": [round(float(v), 4) for v in mins],
+            "max": [round(float(v), 4) for v in maxs],
+            "duration_s": round(n_samples / sr, 3) if sr else 0.0,
+        }
 
     # Mantém o nome antigo como alias para não quebrar chamadas existentes
     analyze_guitar = analyze_stem
