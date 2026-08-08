@@ -9,9 +9,10 @@ from PyQt6.QtWidgets import (
     QDialog,
     QFileDialog,
     QMessageBox,
+    QSystemTrayIcon,
 )
 from PyQt6.QtCore import QThread, pyqtSignal, QUrl, Qt
-from PyQt6.QtGui import QPixmap, QImage
+from PyQt6.QtGui import QPixmap, QImage, QIcon
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 from tinytag import TinyTag
@@ -232,6 +233,18 @@ class MainWindow(QDialog, Ui_Dialog):
         # detectar quando o combo é trocado e os dados ficam desatualizados)
         self.last_analyzed_stem: str = ""
 
+        # Ícone de bandeja usado para exibir notificações nativas do SO
+        # ao iniciar/concluir processamentos longos (Demucs, análise,
+        # envio para hardware). Não exibe um ícone visível na bandeja
+        # por padrão em todos os SOs — serve só como emissor de notificação.
+        self.tray_icon = QSystemTrayIcon(self)
+        app_icon = self.style().standardIcon(
+            self.style().StandardPixmap.SP_MediaPlay
+        )
+        self.tray_icon.setIcon(app_icon)
+        if QSystemTrayIcon.isSystemTrayAvailable():
+            self.tray_icon.show()
+
         # Gráficos de forma de onda e curva de EQ, injetados nos
         # containers vazios definidos no .ui
         self.waveform_plot = WaveformPlot()
@@ -257,7 +270,6 @@ class MainWindow(QDialog, Ui_Dialog):
         self.btn_send_hardware.clicked.connect(self.start_send_hardware)
 
         # Atualiza volumes
-        self.slider_volume.valueChanged.connect(self._apply_master_volume)
         self.slider_vol_orig.valueChanged.connect(self._apply_master_volume)
         self.slider_vol_stem.valueChanged.connect(self._apply_master_volume)
 
@@ -290,16 +302,11 @@ class MainWindow(QDialog, Ui_Dialog):
         self.player_orig.playbackStateChanged.connect(self._on_orig_state_changed)
         self.player_stem.playbackStateChanged.connect(self._on_stem_state_changed)
 
-    # Volume master
+    # Volume
 
     def _apply_master_volume(self) -> None:
-        master = self.slider_volume.value() / 110.0
-        self.audio_out_orig.setVolume(
-            master * (self.slider_vol_orig.value() / 100.0)
-        )
-        self.audio_out_stem.setVolume(
-            master * (self.slider_vol_stem.value() / 100.0)
-        )
+        self.audio_out_orig.setVolume(self.slider_vol_orig.value() / 100.0)
+        self.audio_out_stem.setVolume(self.slider_vol_stem.value() / 100.0)
 
     # Carregar arquivo
 
@@ -474,6 +481,11 @@ class MainWindow(QDialog, Ui_Dialog):
         self.btn_load.setEnabled(False)
         self.progress_bar.setRange(0, 0)
 
+        self._notify(
+            "Separação de faixas iniciada",
+            f"Processando '{Path(self.path_original).name}' com o Demucs…",
+        )
+
         self.demucs_thread = DemucsWorker(self.path_original)
         self.demucs_thread.status.connect(self._set_status)
         self.demucs_thread.finished.connect(self._on_demucs_finished)
@@ -493,6 +505,11 @@ class MainWindow(QDialog, Ui_Dialog):
         self.btn_stop_guitar.setEnabled(False)
 
         self._populate_stems_combo(stems_dir)
+
+        self._notify(
+            "Separação concluída",
+            "As faixas foram separadas com sucesso e já estão disponíveis.",
+        )
 
         self._set_status("Faixas separadas com sucesso!")
 
@@ -568,6 +585,11 @@ class MainWindow(QDialog, Ui_Dialog):
         self.btn_load.setEnabled(False)
         self.progress_bar.setRange(0, 0)
 
+        self._notify(
+            "Tone Matching iniciado",
+            f"Analisando a faixa '{stem_name}'…",
+        )
+
         # Guarda qual stem está sendo analisado — usado depois para saber
         # se o combo foi trocado após a análise (ver _on_stem_selection_changed)
         self._analyzing_stem = stem_name
@@ -613,6 +635,12 @@ class MainWindow(QDialog, Ui_Dialog):
             self._set_status(
                 "Aviso: a faixa analisada está silenciosa ou vazia."
             )
+            self._notify(
+                "Tone Matching concluído (com aviso)",
+                f"A faixa '{self.last_analyzed_stem}' está silenciosa ou "
+                f"vazia — os parâmetros calculados podem não ser confiáveis.",
+                icon=QSystemTrayIcon.MessageIcon.Warning,
+            )
             QMessageBox.warning(
                 self,
                 "Faixa silenciosa",
@@ -623,6 +651,10 @@ class MainWindow(QDialog, Ui_Dialog):
             )
         else:
             self._set_status("Parâmetros calculados com sucesso!")
+            self._notify(
+                "Tone Matching concluído",
+                f"Parâmetros calculados com sucesso para '{self.last_analyzed_stem}'.",
+            )
 
     # Envio para hardware (ESP32-S3)
 
@@ -640,6 +672,11 @@ class MainWindow(QDialog, Ui_Dialog):
         self.btn_run_analysis.setEnabled(False)
         self.btn_load.setEnabled(False)
         self.progress_bar.setRange(0, 0)
+
+        self._notify(
+            "Envio para o pedal iniciado",
+            "Enviando os parâmetros calculados para a ESP32-S3…",
+        )
 
         # port=None → tenta autodetectar a placa; cai em modo simulado
         # (MOCK) automaticamente se nenhuma porta compatível for encontrada.
@@ -663,6 +700,12 @@ class MainWindow(QDialog, Ui_Dialog):
             self._set_status(
                 "Simulação concluída — nenhuma placa foi encontrada."
             )
+            self._notify(
+                "Envio simulado (sem hardware)",
+                "Nenhuma ESP32-S3 foi detectada — o envio foi apenas "
+                "simulado (modo MOCK).",
+                icon=QSystemTrayIcon.MessageIcon.Warning,
+            )
             QMessageBox.information(
                 self,
                 "Envio simulado (sem hardware)",
@@ -674,6 +717,10 @@ class MainWindow(QDialog, Ui_Dialog):
             )
         else:
             self._set_status("Parâmetros enviados para o pedal!")
+            self._notify(
+                "Envio concluído",
+                "Os parâmetros foram enviados com sucesso para a ESP32-S3.",
+            )
 
     def _on_hardware_error(self, err_msg: str) -> None:
         logger.error(f"Erro ao enviar para a ESP32-S3:\n{err_msg}")
@@ -685,6 +732,11 @@ class MainWindow(QDialog, Ui_Dialog):
         self.btn_send_hardware.setEnabled(bool(self.last_params))
 
         self._set_status("Erro ao enviar para o pedal.")
+        self._notify(
+            "Falha no envio para o pedal",
+            self._friendly_error_summary(err_msg),
+            icon=QSystemTrayIcon.MessageIcon.Critical,
+        )
         QMessageBox.critical(
             self,
             "Erro de comunicação",
@@ -846,6 +898,11 @@ class MainWindow(QDialog, Ui_Dialog):
         self.btn_send_hardware.setEnabled(bool(self.last_params))
 
         self._set_status("Erro no processamento.")
+        self._notify(
+            "Falha no processamento",
+            self._friendly_error_summary(err_msg),
+            icon=QSystemTrayIcon.MessageIcon.Critical,
+        )
         QMessageBox.critical(
             self,
             "Erro",
@@ -870,6 +927,34 @@ class MainWindow(QDialog, Ui_Dialog):
     def _set_status(self, msg: str) -> None:
         logger.info(msg)
         self.lbl_status.setText(f"● {msg}")
+
+    def _notify(
+        self,
+        title: str,
+        message: str,
+        icon: QSystemTrayIcon.MessageIcon = QSystemTrayIcon.MessageIcon.Information,
+        duration_ms: int = 4000,
+    ) -> None:
+        """
+        Exibe uma notificação nativa do sistema operacional (balão/toast),
+        usada para avisar o início e a conclusão de processamentos longos
+        (Demucs, Tone Matching, envio para hardware) mesmo quando a janela
+        do app não está em foco.
+
+        Se o sistema de bandeja não estiver disponível no SO atual (raro,
+        mas pode acontecer em alguns ambientes Linux sem área de
+        notificação), a chamada é ignorada silenciosamente — o status na
+        barra inferior (_set_status) continua funcionando normalmente
+        como alternativa.
+        """
+        if not QSystemTrayIcon.isSystemTrayAvailable():
+            logger.debug(
+                "Bandeja do sistema indisponível; notificação suprimida: "
+                f"{title} — {message}"
+            )
+            return
+
+        self.tray_icon.showMessage(title, message, icon, duration_ms)
 
     @staticmethod
     def _format_duration(total_secs: int) -> str:
@@ -941,5 +1026,5 @@ if __name__ == "__main__":
     logger.info("Inicializando QApplication…")
     app = QApplication(sys.argv)
     window = MainWindow()
-    window.show()
+    window.showMaximized()
     sys.exit(app.exec())
