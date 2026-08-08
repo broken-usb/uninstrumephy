@@ -134,17 +134,27 @@ class AudioAnalyzer:
         freqs = librosa.fft_frequencies(sr=sr, n_fft=1024)
 
         def band_energy(low: int, high: int) -> float:
+            """
+            Calcula o RMS (raiz quadrada da média dos quadrados) da
+            magnitude espectral dentro da faixa de frequência informada.
+
+            Usar RMS aqui — em vez de uma média simples da magnitude —
+            mantém a métrica consistente com o cálculo do noise gate
+            (que também usa RMS) e reflete melhor a energia percebida
+            do sinal em cada banda, já que o RMS pondera picos de forma
+            diferente da média aritmética simples.
+            """
             idx = np.where((freqs >= low) & (freqs <= high))[0]
             if idx.size == 0:
                 return 0.0
-            return float(np.mean(stft[idx, :]))
+            return float(np.sqrt(np.mean(np.square(stft[idx, :]))))
 
         bass_e   = band_energy(*self.BAND_BASS)
         mid_e    = band_energy(*self.BAND_MID)
         treble_e = band_energy(*self.BAND_TREBLE)
 
         logger.debug(
-            f"Energias brutas por banda — bass: {bass_e:.6f} | "
+            f"RMS por banda — bass: {bass_e:.6f} | "
             f"mid: {mid_e:.6f} | treble: {treble_e:.6f}"
         )
 
