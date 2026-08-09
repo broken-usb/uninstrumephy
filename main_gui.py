@@ -10,6 +10,7 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QMessageBox,
     QSystemTrayIcon,
+    QListWidgetItem,
 )
 from PyQt6.QtCore import QThread, pyqtSignal, QUrl, Qt
 from PyQt6.QtGui import QPixmap, QImage, QIcon
@@ -204,6 +205,47 @@ class HardwareWorker(QThread):
             self.error.emit(traceback.format_exc())
 
 
+# Filter query worker
+
+class FilterQueryWorker(QThread):
+
+    finished = pyqtSignal(list, bool)   # (filtros, was_mock)
+    error    = pyqtSignal(str)
+    status   = pyqtSignal(str)
+
+    def __init__(self, port: str | None = None) -> None:
+        super().__init__()
+        self.port = port
+
+    def run(self) -> None:
+        try:
+            logger.info("Consultando filtros disponíveis na ESP32-S3.")
+
+            link = ESP32Link(port=self.port)
+            was_mock = link.is_mock
+
+            if was_mock:
+                self.status.emit(
+                    "Nenhuma placa detectada — usando filtros de exemplo (modo MOCK)…"
+                )
+            else:
+                self.status.emit(f"Conectando à porta {link.port}…")
+
+            filters = link.list_filters(progress_cb=self.status.emit)
+            link.close()
+
+            logger.info(f"Consulta de filtros concluída: {len(filters)} filtro(s).")
+            self.finished.emit(filters, was_mock)
+
+        except HardwareLinkError as exc:
+            logger.exception("Erro de comunicação ao consultar filtros na ESP32-S3.")
+            self.error.emit(str(exc))
+
+        except Exception:
+            logger.exception("Erro inesperado durante a consulta de filtros.")
+            self.error.emit(traceback.format_exc())
+
+
 # Main window
 
 class MainWindow(QDialog, Ui_Dialog):
@@ -268,6 +310,11 @@ class MainWindow(QDialog, Ui_Dialog):
         self.btn_run_demucs.clicked.connect(self.start_demucs)
         self.btn_run_analysis.clicked.connect(self.start_analysis)
         self.btn_send_hardware.clicked.connect(self.start_send_hardware)
+        self.btn_query_filters.clicked.connect(self.start_query_filters)
+        self.btn_apply_filters.clicked.connect(self.apply_selected_filters)
+        self.list_filters.itemSelectionChanged.connect(
+            self._on_filter_selection_changed
+        )
 
         # Atualiza volumes
         self.slider_vol_orig.valueChanged.connect(self._apply_master_volume)
@@ -745,6 +792,121 @@ class MainWindow(QDialog, Ui_Dialog):
             f"Detalhes completos foram registrados no terminal/log.",
         )
 
+    # Seleção de filtros (ESP32-S3)
+
+    def start_query_filters(self) -> None:
+        """Consulta a ESP32-S3 para descobrir quais filtros ela conhece."""
+        logger.info("Iniciando consulta de filtros disponíveis.")
+        self.btn_query_filters.setEnabled(False)
+        self.btn_apply_filters.setEnabled(False)
+        self.list_filters.clear()
+        self.lbl_filters_status.setText("Consultando…")
+
+        self._notify(
+            "Consulta de filtros iniciada",
+            "Perguntando ao pedal quais filtros estão disponíveis…",
+        )
+
+        self.filter_query_thread = FilterQueryWorker(port=None)
+        self.filter_query_thread.status.connect(self._set_status)
+        self.filter_query_thread.finished.connect(self._on_filters_received)
+        self.filter_query_thread.error.connect(self._on_filter_query_error)
+        self.filter_query_thread.start()
+
+    def _on_filters_received(self, filters: list, was_mock: bool) -> None:
+        logger.info(f"Filtros recebidos: {filters}")
+        self.btn_query_filters.setEnabled(True)
+
+        # Guarda os metadados completos de cada filtro (id, params) para uso
+        # posterior — a QListWidget só mostra o nome, então associamos o
+        # dicionário original a cada item via UserRole.
+        self._known_filters = {f["id"]: f for f in filters}
+
+        self.list_filters.clear()
+        for f in filters:
+            item = QListWidgetItem(f.get("name", f["id"]))
+            item.setData(Qt.ItemDataRole.UserRole, f["id"])
+            self.list_filters.addItem(item)
+
+        if was_mock:
+            self.lbl_filters_status.setText(
+                f"{len(filters)} filtro(s) de exemplo (modo simulado — sem placa conectada)."
+            )
+            self._notify(
+                "Filtros de exemplo carregados",
+                "Nenhuma ESP32-S3 detectada — exibindo filtros simulados para teste da interface.",
+                icon=QSystemTrayIcon.MessageIcon.Warning,
+            )
+        else:
+            self.lbl_filters_status.setText(
+                f"{len(filters)} filtro(s) disponível(is) no pedal."
+            )
+            self._notify(
+                "Filtros recebidos",
+                f"O pedal informou {len(filters)} filtro(s) disponível(is).",
+            )
+
+        self._set_status("Consulta de filtros concluída.")
+
+    def _on_filter_query_error(self, err_msg: str) -> None:
+        logger.error(f"Erro ao consultar filtros na ESP32-S3:\n{err_msg}")
+        self.btn_query_filters.setEnabled(True)
+        self.lbl_filters_status.setText("Falha ao consultar filtros.")
+
+        self._set_status("Erro ao consultar filtros do pedal.")
+        self._notify(
+            "Falha ao consultar filtros",
+            self._friendly_error_summary(err_msg),
+            icon=QSystemTrayIcon.MessageIcon.Critical,
+        )
+        QMessageBox.critical(
+            self,
+            "Erro de comunicação",
+            f"Não foi possível consultar os filtros da ESP32-S3:\n\n"
+            f"{self._friendly_error_summary(err_msg)}\n\n"
+            f"Detalhes completos foram registrados no terminal/log.",
+        )
+
+    def _on_filter_selection_changed(self) -> None:
+        self.btn_apply_filters.setEnabled(
+            len(self.list_filters.selectedItems()) > 0
+        )
+
+    def apply_selected_filters(self) -> None:
+        """
+        Esqueleto inicial: por ora, apenas registra e notifica quais
+        filtros foram selecionados pelo usuário. O envio efetivo da
+        configuração de cada filtro (com seus parâmetros específicos,
+        ex.: freq_hz/gain_db de um low_shelf) depende de definirmos,
+        junto ao firmware, o formato exato de configuração por filtro —
+        próxima etapa depois deste esqueleto.
+        """
+        selected_ids = [
+            item.data(Qt.ItemDataRole.UserRole)
+            for item in self.list_filters.selectedItems()
+        ]
+        selected_names = [item.text() for item in self.list_filters.selectedItems()]
+
+        logger.info(f"Filtros selecionados para aplicação: {selected_ids}")
+
+        self._set_status(
+            f"{len(selected_ids)} filtro(s) selecionado(s) — "
+            f"envio de configuração ainda não implementado."
+        )
+        self._notify(
+            "Filtros selecionados",
+            "Selecionados: " + ", ".join(selected_names),
+        )
+        QMessageBox.information(
+            self,
+            "Seleção registrada",
+            "Filtros selecionados:\n\n"
+            + "\n".join(f"• {name}" for name in selected_names)
+            + "\n\nO envio da configuração de cada filtro para o pedal "
+            "ainda será implementado — por enquanto, esta tela apenas "
+            "registra a seleção."
+        )
+
     # Playback original
 
     def toggle_original(self) -> None:
@@ -1009,6 +1171,7 @@ class MainWindow(QDialog, Ui_Dialog):
             "analysis_thread",
             "metadata_thread",
             "hardware_thread",
+            "filter_query_thread",
         ):
             self._stop_thread(attr)
 

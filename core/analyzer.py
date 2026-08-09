@@ -50,6 +50,13 @@ class AudioAnalyzer:
           - waveform: envelope simplificado da forma de onda (amplitude
             min/max por bloco), para visualização gráfica sem precisar
             recarregar o áudio inteiro na UI
+          - spectral_centroid_hz: "centro de massa" médio do espectro em
+            Hz — indica o quão "brilhante" (agudo) ou "escuro" (grave) o
+            timbre da faixa soa de forma geral. Não é enviado ao hardware,
+            é um dado auxiliar de diagnóstico/visualização.
+          - spectral_centroid_curve: evolução do centroide espectral ao
+            longo do tempo (lista de pontos {time_s, hz}), útil para
+            visualizar como o brilho do som varia durante a faixa.
           - is_silent: True se o stem não contém sinal audível relevante
 
         Args:
@@ -61,6 +68,8 @@ class AudioAnalyzer:
                 "eq": {"bass": float, "mid": float, "treble": float},
                 "eq_curve": [{"freq_hz": float, "db": float}, ...],
                 "waveform": {"min": [...], "max": [...], "duration_s": float},
+                "spectral_centroid_hz": float,
+                "spectral_centroid_curve": [{"time_s": float, "hz": float}, ...],
                 "is_silent": bool
             }
 
@@ -96,6 +105,8 @@ class AudioAnalyzer:
                 "eq": {"bass": 0.0, "mid": 0.0, "treble": 0.0},
                 "eq_curve": [],
                 "waveform": {"min": [], "max": [], "duration_s": duration_s},
+                "spectral_centroid_hz": 0.0,
+                "spectral_centroid_curve": [],
                 "is_silent": True,
             }
 
@@ -178,19 +189,23 @@ class AudioAnalyzer:
 
         eq_curve = self._compute_eq_curve(stft, freqs)
         waveform = self._compute_waveform_envelope(y, sr)
+        centroid_mean, centroid_curve = self._compute_spectral_centroid(y, sr)
 
         params: dict = {
             "noise_gate_threshold_db": gate_target,
             "eq": eq,
             "eq_curve": eq_curve,
             "waveform": waveform,
+            "spectral_centroid_hz": centroid_mean,
+            "spectral_centroid_curve": centroid_curve,
             "is_silent": False,
         }
 
         logger.info(
             f"Análise concluída: gate={gate_target}dB, eq={eq}, "
             f"eq_curve com {len(eq_curve)} pontos, "
-            f"waveform com {len(waveform['min'])} blocos"
+            f"waveform com {len(waveform['min'])} blocos, "
+            f"spectral_centroid médio={centroid_mean}Hz"
         )
 
         return params
@@ -268,6 +283,58 @@ class AudioAnalyzer:
             "max": [round(float(v), 4) for v in maxs],
             "duration_s": round(n_samples / sr, 3) if sr else 0.0,
         }
+
+    # Spectral centroid (brilho do timbre)
+
+    CENTROID_CURVE_TARGET_POINTS: int = 200
+
+    def _compute_spectral_centroid(
+        self, y: np.ndarray, sr: int
+    ) -> tuple[float, list[dict]]:
+        """
+        Calcula o centroide espectral (spectral centroid) do sinal: o
+        "centro de massa" do espectro de frequências, ponderado pela
+        energia em cada frequência. Um valor mais alto indica um timbre
+        mais "brilhante" (rico em agudos); um valor mais baixo indica um
+        timbre mais "escuro" (concentrado em graves).
+
+        Diferente do EQ de 3 bandas (que já captura a distribuição de
+        energia por faixa), o centroide resume o timbre da faixa inteira
+        em um único número interpretável, e sua evolução ao longo do
+        tempo ajuda a identificar se o brilho do som varia muito durante
+        a gravação (ex.: dedilhado mais brilhante no início, mais
+        abafado no final).
+
+        Returns:
+            (centroid_mean_hz, centroid_curve) onde centroid_curve é uma
+            lista de pontos {"time_s": float, "hz": float} — reduzida a
+            CENTROID_CURVE_TARGET_POINTS pontos para não sobrecarregar a
+            UI com dados desnecessariamente granulares.
+        """
+        centroid = librosa.feature.spectral_centroid(
+            y=y, sr=sr, n_fft=1024, hop_length=512
+        )[0]
+
+        if centroid.size == 0:
+            return 0.0, []
+
+        centroid_mean = float(np.mean(centroid))
+
+        times = librosa.frames_to_time(
+            np.arange(len(centroid)), sr=sr, hop_length=512
+        )
+
+        # Reduz a curva a um número razoável de pontos para visualização,
+        # sem perder a forma geral da evolução do brilho ao longo do tempo
+        n_points = min(self.CENTROID_CURVE_TARGET_POINTS, len(centroid))
+        indices = np.linspace(0, len(centroid) - 1, n_points).astype(int)
+
+        curve = [
+            {"time_s": round(float(times[i]), 3), "hz": round(float(centroid[i]), 1)}
+            for i in indices
+        ]
+
+        return round(centroid_mean, 1), curve
 
     # Mantém o nome antigo como alias para não quebrar chamadas existentes
     analyze_guitar = analyze_stem

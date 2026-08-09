@@ -25,18 +25,45 @@ class ESP32Link:
     para uma ESP32-S3 conectada via USB (porta serial), usando um
     protocolo simples de uma linha JSON por mensagem.
 
-    Formato enviado (terminado em '\\n'):
+    Formato enviado para tone-matching (terminado em '\\n'):
         {"noise_gate_threshold_db": -42.5, "eq": {"bass": 4.1, "mid": 3.2, "treble": 2.7}}
+
+    Formato do protocolo de descoberta de filtros (comando/resposta):
+        Software → ESP32:  {"cmd": "list_filters"}
+        ESP32 → Software:  {"filters": [
+            {"id": "low_shelf", "name": "Low Shelf", "params": ["freq_hz", "gain_db"]},
+            {"id": "peaking",   "name": "Peaking",   "params": ["freq_hz", "gain_db", "q"]},
+            ...
+        ]}
+
+    Este protocolo de descoberta é provisório — o formato exato dos
+    filtros (campos, nomes) deve ser acordado com o firmware assim que
+    ele estiver disponível para testes reais. Por ora, o software só
+    define o contrato mínimo: uma lista de filtros, cada um com id,
+    nome de exibição e a lista de parâmetros que aceita.
 
     Modo simulado:
         Use port=MOCK_PORT (ou port="MOCK") para simular o envio sem
         precisar de hardware físico conectado. Nesse modo, nada é
         escrito de fato em uma porta serial — o payload é apenas
         logado, o que permite testar todo o fluxo da GUI sem a placa.
+        No caso da descoberta de filtros, uma lista de filtros de
+        exemplo é devolvida, para permitir testar a UI de seleção
+        sem depender do firmware real.
     """
 
     BAUDRATE: int = 115_200
     TIMEOUT_S: float = 2.0
+
+    # Filtros de exemplo devolvidos em modo MOCK, só para permitir testar
+    # a UI de seleção de filtros sem hardware/firmware real disponível.
+    # Deve ser substituído pela lista real assim que o firmware existir.
+    MOCK_FILTERS: list[dict] = [
+        {"id": "low_shelf",  "name": "Low Shelf (Graves)",  "params": ["freq_hz", "gain_db"]},
+        {"id": "peaking",    "name": "Peaking (Médios)",    "params": ["freq_hz", "gain_db", "q"]},
+        {"id": "high_shelf", "name": "High Shelf (Agudos)", "params": ["freq_hz", "gain_db"]},
+        {"id": "noise_gate", "name": "Noise Gate",          "params": ["threshold_db"]},
+    ]
 
     # Tempo de espera após abrir a porta: a maioria das placas baseadas em
     # ESP32 reinicia ao abrir a conexão serial (DTR/RTS), então é preciso
@@ -152,6 +179,76 @@ class ESP32Link:
         if self._conn is not None and self._conn.is_open:
             self._conn.close()
             logger.info("Conexão serial encerrada.")
+
+    def list_filters(
+        self,
+        progress_cb: Callable[[str], None] | None = None,
+    ) -> list[dict]:
+        """
+        Pergunta à ESP32-S3 quais filtros ela conhece, enviando o comando
+        {"cmd": "list_filters"} e aguardando uma linha JSON de resposta
+        no formato {"filters": [...]}.
+
+        Em modo MOCK (sem placa conectada), devolve MOCK_FILTERS — uma
+        lista de exemplo — para permitir testar a UI de seleção sem
+        depender do firmware real.
+
+        Returns:
+            Lista de filtros, cada um como
+            {"id": str, "name": str, "params": [str, ...]}.
+
+        Raises:
+            HardwareLinkError: Se a conexão, o envio, ou a leitura da
+                resposta falharem (incluindo timeout ou resposta
+                malformada).
+        """
+        if self.is_mock:
+            self._notify(progress_cb, "[Simulado] Consultando filtros conhecidos…")
+            logger.info(f"[MOCK] Devolvendo filtros de exemplo: {self.MOCK_FILTERS}")
+            self._notify(progress_cb, f"[Simulado] {len(self.MOCK_FILTERS)} filtro(s) recebido(s).")
+            return list(self.MOCK_FILTERS)
+
+        if self._conn is None or not self._conn.is_open:
+            self._notify(progress_cb, f"Conectando à porta {self.port}…")
+            self.connect()
+
+        request = (json.dumps({"cmd": "list_filters"}) + "\n").encode("utf-8")
+
+        try:
+            self._notify(progress_cb, "Consultando filtros conhecidos pelo pedal…")
+            self._conn.write(request)
+            self._conn.flush()
+
+            raw_line = self._conn.readline()
+        except serial.SerialTimeoutException as exc:
+            raise HardwareLinkError(
+                f"Timeout ao consultar filtros em {self.port}: a placa não "
+                f"respondeu a tempo. Detalhe: {exc}"
+            ) from exc
+        except serial.SerialException as exc:
+            raise HardwareLinkError(f"Falha ao consultar filtros: {exc}") from exc
+
+        if not raw_line:
+            raise HardwareLinkError(
+                f"A placa em {self.port} não respondeu ao comando "
+                f"'list_filters' dentro do timeout ({self.TIMEOUT_S}s)."
+            )
+
+        try:
+            response = json.loads(raw_line.decode("utf-8").strip())
+            filters = response["filters"]
+            if not isinstance(filters, list):
+                raise TypeError("campo 'filters' não é uma lista")
+        except (json.JSONDecodeError, KeyError, TypeError, UnicodeDecodeError) as exc:
+            raise HardwareLinkError(
+                f"Resposta malformada da placa ao consultar filtros: "
+                f"{raw_line!r} ({exc})"
+            ) from exc
+
+        logger.info(f"Filtros recebidos da ESP32-S3: {filters}")
+        self._notify(progress_cb, f"{len(filters)} filtro(s) recebido(s).")
+
+        return filters
 
     @staticmethod
     def _notify(cb: Callable[[str], None] | None, msg: str) -> None:
