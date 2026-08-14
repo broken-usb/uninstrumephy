@@ -1,5 +1,4 @@
 import sys
-import time
 import logging
 import traceback
 from pathlib import Path
@@ -10,19 +9,17 @@ from PyQt6.QtWidgets import (
     QFileDialog,
     QMessageBox,
     QSystemTrayIcon,
-    QListWidgetItem,
 )
 from PyQt6.QtCore import QThread, pyqtSignal, QUrl, Qt
-from PyQt6.QtGui import QPixmap, QImage, QIcon
+from PyQt6.QtGui import QPixmap, QImage
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 from tinytag import TinyTag
 
 from gui.ui_mainwindow import Ui_Dialog
-from gui.plots import WaveformPlot, EQCurvePlot
-from core.separator import AudioSeparator
-from core.analyzer import AudioAnalyzer
-from core.hardware import ESP32Link, HardwareLinkError
+from gui.tab_demucs import TabDemucs
+from gui.tab_tonematching import TabToneMatching
+from gui.tab_hardware import TabHardware
 
 # Logging
 
@@ -34,6 +31,10 @@ logger = logging.getLogger(__name__)
 
 
 # Metadata worker
+#
+# Único worker que continua morando na casca raiz: metadados (título,
+# artista, capa) são um dado compartilhado entre todas as abas, não algo
+# específico de Demucs, Tone Matching ou Hardware.
 
 class MetadataWorker(QThread):
 
@@ -84,183 +85,33 @@ class MetadataWorker(QThread):
             self.error.emit(traceback.format_exc())
 
 
-# Demucs worker
-
-class DemucsWorker(QThread):
-
-    finished = pyqtSignal(str, str)   # guitar_path, stems_dir
-    error    = pyqtSignal(str)
-    status   = pyqtSignal(str)
-
-    def __init__(self, audio_path: str) -> None:
-        super().__init__()
-        self.audio_path = audio_path
-
-    def run(self) -> None:
-        start_time = time.monotonic()
-        try:
-            logger.info(f"Iniciando separação: {self.audio_path}")
-
-            separator = AudioSeparator()
-            logger.debug(f"Device de inferência: {separator.device}")
-
-            guitar_path = separator.extract_guitar(
-                self.audio_path,
-                progress_cb=self.status.emit,
-            )
-
-            if not guitar_path:
-                raise RuntimeError("Falha ao gerar stem de guitarra.")
-
-            stems_dir = str(Path(guitar_path).parent)
-            elapsed = time.monotonic() - start_time
-
-            stems_found = sorted(p.name for p in Path(stems_dir).glob("*.wav"))
-            logger.info(
-                f"Separação concluída em {elapsed:.1f}s. "
-                f"Stems gerados: {stems_found}"
-            )
-            self.finished.emit(guitar_path, stems_dir)
-
-        except Exception:
-            logger.exception("Erro durante separação.")
-            self.error.emit(traceback.format_exc())
-
-
-# Analysis worker
-
-class AnalysisWorker(QThread):
-
-    finished = pyqtSignal(dict)
-    error    = pyqtSignal(str)
-    status   = pyqtSignal(str)
-
-    def __init__(self, guitar_path: str) -> None:
-        super().__init__()
-        self.guitar_path = guitar_path
-
-    def run(self) -> None:
-        start_time = time.monotonic()
-        try:
-            logger.info(f"Iniciando análise: {self.guitar_path}")
-            self.status.emit("Extraindo parâmetros matemáticos…")
-
-            params = AudioAnalyzer().analyze_stem(self.guitar_path)
-            elapsed = time.monotonic() - start_time
-
-            eq = params.get("eq", {})
-            logger.info(
-                f"Análise concluída em {elapsed:.2f}s. "
-                f"Gate: {params.get('noise_gate_threshold_db')} dB | "
-                f"EQ (bass/mid/treble): "
-                f"{eq.get('bass')}/{eq.get('mid')}/{eq.get('treble')} | "
-                f"Silencioso: {params.get('is_silent')}"
-            )
-            self.finished.emit(params)
-
-        except Exception:
-            logger.exception("Erro durante análise.")
-            self.error.emit(traceback.format_exc())
-
-
-# Hardware worker
-
-class HardwareWorker(QThread):
-
-    finished = pyqtSignal(bool)   # True se foi enviado em modo simulado (MOCK)
-    error    = pyqtSignal(str)
-    status   = pyqtSignal(str)
-
-    def __init__(self, params: dict, port: str | None = None) -> None:
-        super().__init__()
-        self.params = params
-        self.port = port
-
-    def run(self) -> None:
-        try:
-            logger.info("Iniciando envio para a ESP32-S3.")
-
-            link = ESP32Link(port=self.port)
-            was_mock = link.is_mock
-
-            if was_mock:
-                self.status.emit(
-                    "Nenhuma placa detectada — simulando envio (modo MOCK)…"
-                )
-            else:
-                self.status.emit(f"Conectando à porta {link.port}…")
-
-            link.send_params(self.params, progress_cb=self.status.emit)
-            link.close()
-
-            logger.info("Envio para a ESP32-S3 concluído.")
-            self.finished.emit(was_mock)
-
-        except HardwareLinkError as exc:
-            logger.exception("Erro de comunicação com a ESP32-S3.")
-            self.error.emit(str(exc))
-
-        except Exception:
-            logger.exception("Erro inesperado durante o envio para hardware.")
-            self.error.emit(traceback.format_exc())
-
-
-# Filter query worker
-
-class FilterQueryWorker(QThread):
-
-    finished = pyqtSignal(list, bool)   # (filtros, was_mock)
-    error    = pyqtSignal(str)
-    status   = pyqtSignal(str)
-
-    def __init__(self, port: str | None = None) -> None:
-        super().__init__()
-        self.port = port
-
-    def run(self) -> None:
-        try:
-            logger.info("Consultando filtros disponíveis na ESP32-S3.")
-
-            link = ESP32Link(port=self.port)
-            was_mock = link.is_mock
-
-            if was_mock:
-                self.status.emit(
-                    "Nenhuma placa detectada — usando filtros de exemplo (modo MOCK)…"
-                )
-            else:
-                self.status.emit(f"Conectando à porta {link.port}…")
-
-            filters = link.list_filters(progress_cb=self.status.emit)
-            link.close()
-
-            logger.info(f"Consulta de filtros concluída: {len(filters)} filtro(s).")
-            self.finished.emit(filters, was_mock)
-
-        except HardwareLinkError as exc:
-            logger.exception("Erro de comunicação ao consultar filtros na ESP32-S3.")
-            self.error.emit(str(exc))
-
-        except Exception:
-            logger.exception("Erro inesperado durante a consulta de filtros.")
-            self.error.emit(traceback.format_exc())
-
-
 # Main window
 
 class MainWindow(QDialog, Ui_Dialog):
+    """
+    Janela principal — atua como orquestradora "fina" entre as três abas
+    de funcionalidade (Demucs, Tone Matching, Hardware) e o estado
+    compartilhado entre elas: arquivo carregado, metadados, players de
+    áudio (original e stem) e a seleção atual de stem no combo.
+
+    Cada aba é um QWidget independente (gui/tab_*.py) que só se comunica
+    com esta janela via sinais Qt — a janela nunca acessa widgets internos
+    de uma aba diretamente, só a API pública que cada aba expõe
+    (set_audio_path, set_selected_stem, set_params, reset, etc.).
+    """
 
     def __init__(self) -> None:
         super().__init__()
         self.setupUi(self)
         logger.info("Inicializando aplicação…")
 
-        # Paths
+        # Estado compartilhado entre abas
         self.path_original:  str = ""
         self.path_guitarra:  str = ""
         self.path_stems_dir: str = ""
 
-        # Players e saídas
+        # Players e saídas — compartilhados e sempre visíveis,
+        # independente de qual aba está selecionada
         self.audio_out_orig = QAudioOutput()
         self.player_orig    = QMediaPlayer()
         self.player_orig.setAudioOutput(self.audio_out_orig)
@@ -269,16 +120,10 @@ class MainWindow(QDialog, Ui_Dialog):
         self.player_stem    = QMediaPlayer()
         self.player_stem.setAudioOutput(self.audio_out_stem)
 
-        # Últimos parâmetros calculados (necessários para o envio ao hardware)
-        self.last_params: dict = {}
-        # Nome do stem que gerou os últimos parâmetros calculados (para
-        # detectar quando o combo é trocado e os dados ficam desatualizados)
-        self.last_analyzed_stem: str = ""
-
         # Ícone de bandeja usado para exibir notificações nativas do SO
-        # ao iniciar/concluir processamentos longos (Demucs, análise,
-        # envio para hardware). Não exibe um ícone visível na bandeja
-        # por padrão em todos os SOs — serve só como emissor de notificação.
+        # ao iniciar/concluir processamentos longos. Não exibe um ícone
+        # visível na bandeja por padrão em todos os SOs — serve só como
+        # emissor de notificação.
         self.tray_icon = QSystemTrayIcon(self)
         app_icon = self.style().standardIcon(
             self.style().StandardPixmap.SP_MediaPlay
@@ -287,13 +132,17 @@ class MainWindow(QDialog, Ui_Dialog):
         if QSystemTrayIcon.isSystemTrayAvailable():
             self.tray_icon.show()
 
-        # Gráficos de forma de onda e curva de EQ, injetados nos
-        # containers vazios definidos no .ui
-        self.waveform_plot = WaveformPlot()
-        self.waveformContainerLayout.addWidget(self.waveform_plot)
+        # Threads
+        self.metadata_thread: MetadataWorker | None = None
 
-        self.eq_curve_plot = EQCurvePlot()
-        self.eqCurveContainerLayout.addWidget(self.eq_curve_plot)
+        # Monta as três abas de funcionalidade dentro do QTabWidget raiz
+        self.tab_demucs = TabDemucs()
+        self.tab_tonematching = TabToneMatching()
+        self.tab_hardware = TabHardware()
+
+        self.tabsMain.addTab(self.tab_demucs, "🎚  Separação (Demucs)")
+        self.tabsMain.addTab(self.tab_tonematching, "📊  Tone Matching")
+        self.tabsMain.addTab(self.tab_hardware, "🔌  Pedal (ESP32-S3)")
 
         # Conecta sinais
         self._connect_signals()
@@ -307,14 +156,6 @@ class MainWindow(QDialog, Ui_Dialog):
 
     def _connect_signals(self) -> None:
         self.btn_load.clicked.connect(self.load_audio_file)
-        self.btn_run_demucs.clicked.connect(self.start_demucs)
-        self.btn_run_analysis.clicked.connect(self.start_analysis)
-        self.btn_send_hardware.clicked.connect(self.start_send_hardware)
-        self.btn_query_filters.clicked.connect(self.start_query_filters)
-        self.btn_apply_filters.clicked.connect(self.apply_selected_filters)
-        self.list_filters.itemSelectionChanged.connect(
-            self._on_filter_selection_changed
-        )
 
         # Atualiza volumes
         self.slider_vol_orig.valueChanged.connect(self._apply_master_volume)
@@ -328,7 +169,7 @@ class MainWindow(QDialog, Ui_Dialog):
         self.btn_play_guitar.clicked.connect(self.toggle_stem)
         self.btn_stop_guitar.clicked.connect(self.stop_stem)
 
-        # Mudança de faixa no combo → para stem atual
+        # Mudança de faixa no combo → para stem atual e propaga seleção
         self.combo_stems.currentTextChanged.connect(
             self._on_stem_selection_changed
         )
@@ -348,6 +189,23 @@ class MainWindow(QDialog, Ui_Dialog):
         # Estado de playback → atualiza ícone dos botões e habilita stop
         self.player_orig.playbackStateChanged.connect(self._on_orig_state_changed)
         self.player_stem.playbackStateChanged.connect(self._on_stem_state_changed)
+
+        # Sinais das abas → orquestração compartilhada (status, notificações,
+        # progresso, e propagação de resultados entre abas)
+        self.tab_demucs.separation_started.connect(self._on_demucs_started)
+        self.tab_demucs.separation_finished.connect(self._on_demucs_finished)
+        self.tab_demucs.separation_error.connect(self._on_worker_error)
+        self.tab_demucs.status_message.connect(self._set_status)
+
+        self.tab_tonematching.analysis_started.connect(self._on_analysis_started)
+        self.tab_tonematching.analysis_finished.connect(self._on_analysis_finished)
+        self.tab_tonematching.analysis_error.connect(self._on_worker_error)
+        self.tab_tonematching.status_message.connect(self._set_status)
+
+        self.tab_hardware.send_started.connect(self._on_hardware_send_started)
+        self.tab_hardware.send_finished.connect(self._on_hardware_send_finished)
+        self.tab_hardware.send_error.connect(self._on_hardware_send_error)
+        self.tab_hardware.status_message.connect(self._set_status)
 
     # Volume
 
@@ -413,7 +271,7 @@ class MainWindow(QDialog, Ui_Dialog):
         self.lbl_cover.setText("♪")
 
         # Cancela thread antiga de metadados, se houver
-        if getattr(self, "metadata_thread", None) is not None:
+        if self.metadata_thread is not None:
             logger.debug("Cancelando thread de metadados anterior ainda em execução.")
             try:
                 self.metadata_thread.quit()
@@ -432,24 +290,21 @@ class MainWindow(QDialog, Ui_Dialog):
         # Estado da UI enquanto a leitura ocorre
         self.btn_play_orig.setEnabled(False)
         self.btn_stop_orig.setEnabled(False)
-        self.btn_run_demucs.setEnabled(False)
 
-        # Invalida resultados anteriores de stems/análise
+        # Invalida resultados anteriores de stems/análise em todas as abas
         self.path_guitarra  = ""
         self.path_stems_dir = ""
-        self.last_params    = {}
-        self.last_analyzed_stem = ""
         self.btn_play_guitar.setEnabled(False)
         self.btn_stop_guitar.setEnabled(False)
         self.combo_stems.clear()
         self.combo_stems.setEnabled(False)
-        self.btn_run_analysis.setEnabled(False)
-        self.btn_send_hardware.setEnabled(False)
         self.lbl_gate.setText("Noise Gate: -- dB")
         self.lbl_eq.setText("EQ — Bass: --  |  Mid: --  |  Treble: --")
-        self.lbl_analyzed_stem.setText("")
-        self.waveform_plot.clear_plot()
-        self.eq_curve_plot.clear_plot()
+
+        self.tab_demucs.reset()
+        self.tab_demucs.set_audio_path(file_name)
+        self.tab_tonematching.reset()
+        self.tab_hardware.reset()
 
         self.progress_bar.setValue(0)
         self._set_status("Carregando metadados…")
@@ -506,7 +361,6 @@ class MainWindow(QDialog, Ui_Dialog):
 
         self.btn_play_orig.setEnabled(True)
         self.btn_stop_orig.setEnabled(False)
-        self.btn_run_demucs.setEnabled(True)
         self._set_status("Música carregada.")
 
     def _on_metadata_error(self, err_msg: str) -> None:
@@ -517,27 +371,17 @@ class MainWindow(QDialog, Ui_Dialog):
         self.lbl_cover.setText("♪")
         self.btn_play_orig.setEnabled(True)
         self.btn_stop_orig.setEnabled(False)
-        self.btn_run_demucs.setEnabled(True)
         self._set_status("Música carregada.")
 
-    # Demucs
+    # Orquestração: aba Demucs
 
-    def start_demucs(self) -> None:
-        logger.info("Iniciando workflow Demucs.")
-        self.btn_run_demucs.setEnabled(False)
+    def _on_demucs_started(self) -> None:
         self.btn_load.setEnabled(False)
         self.progress_bar.setRange(0, 0)
-
         self._notify(
             "Separação de faixas iniciada",
             f"Processando '{Path(self.path_original).name}' com o Demucs…",
         )
-
-        self.demucs_thread = DemucsWorker(self.path_original)
-        self.demucs_thread.status.connect(self._set_status)
-        self.demucs_thread.finished.connect(self._on_demucs_finished)
-        self.demucs_thread.error.connect(self._on_error)
-        self.demucs_thread.start()
 
     def _on_demucs_finished(self, guitar_path: str, stems_dir: str) -> None:
         logger.info("Workflow Demucs finalizado.")
@@ -557,7 +401,6 @@ class MainWindow(QDialog, Ui_Dialog):
             "Separação concluída",
             "As faixas foram separadas com sucesso e já estão disponíveis.",
         )
-
         self._set_status("Faixas separadas com sucesso!")
 
     def _populate_stems_combo(self, stems_dir: str) -> None:
@@ -580,7 +423,6 @@ class MainWindow(QDialog, Ui_Dialog):
                 f"Nenhum arquivo .wav encontrado em {stems_dir} após a separação."
             )
             self.combo_stems.setEnabled(False)
-            self.btn_run_analysis.setEnabled(False)
             self.btn_play_guitar.setEnabled(False)
             self.combo_stems.blockSignals(False)
             QMessageBox.warning(
@@ -600,69 +442,38 @@ class MainWindow(QDialog, Ui_Dialog):
         self.combo_stems.setCurrentIndex(default_index)
 
         self.combo_stems.blockSignals(False)
-        self.btn_run_analysis.setEnabled(True)
 
-    # Análise
+        # Propaga a seleção inicial para a aba de Tone Matching
+        self._propagate_stem_selection(stem_names[default_index])
 
-    def start_analysis(self) -> None:
-        stem_name = self.combo_stems.currentText()
+    def _propagate_stem_selection(self, stem_name: str) -> None:
+        """Informa à aba de Tone Matching qual stem está selecionado agora."""
+        stem_path = ""
+        if stem_name and self.path_stems_dir:
+            candidate = Path(self.path_stems_dir) / f"{stem_name}.wav"
+            if candidate.exists():
+                stem_path = str(candidate)
+        self.tab_tonematching.set_selected_stem(stem_name, stem_path)
 
-        if not stem_name:
-            QMessageBox.warning(
-                self,
-                "Nenhuma faixa selecionada",
-                "Selecione uma faixa isolada antes de executar o Tone Matching.",
-            )
-            return
+    # Orquestração: aba Tone Matching
 
-        stem_path = Path(self.path_stems_dir) / f"{stem_name}.wav"
-
-        if not stem_path.exists():
-            logger.warning(f"Stem selecionado não encontrado em disco: {stem_path}")
-            QMessageBox.critical(
-                self,
-                "Arquivo não encontrado",
-                f"A faixa '{stem_name}.wav' não foi encontrada em disco.\n"
-                f"Tente executar a separação novamente.",
-            )
-            return
-
-        logger.info(f"Iniciando workflow análise (faixa selecionada: {stem_name}).")
-        self.btn_run_analysis.setEnabled(False)
+    def _on_analysis_started(self) -> None:
         self.btn_load.setEnabled(False)
         self.progress_bar.setRange(0, 0)
-
+        stem_name = self.combo_stems.currentText()
         self._notify(
             "Tone Matching iniciado",
             f"Analisando a faixa '{stem_name}'…",
         )
 
-        # Guarda qual stem está sendo analisado — usado depois para saber
-        # se o combo foi trocado após a análise (ver _on_stem_selection_changed)
-        self._analyzing_stem = stem_name
-
-        self.analysis_thread = AnalysisWorker(str(stem_path))
-        self.analysis_thread.status.connect(self._set_status)
-        self.analysis_thread.finished.connect(self._on_analysis_finished)
-        self.analysis_thread.error.connect(self._on_error)
-        self.analysis_thread.start()
-
-    def _on_analysis_finished(self, params: dict) -> None:
+    def _on_analysis_finished(self, params: dict, analyzed_stem: str) -> None:
         logger.info("Workflow análise finalizado.")
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
-
         self.btn_load.setEnabled(True)
-        self.btn_run_analysis.setEnabled(True)
-
-        self.last_params = params
-        self.last_analyzed_stem = getattr(self, "_analyzing_stem", "")
-        self.btn_send_hardware.setEnabled(True)
 
         gate = params.get("noise_gate_threshold_db", "--")
         eq   = params.get("eq", {})
-        eq_curve = params.get("eq_curve", [])
-        waveform = params.get("waveform", {})
         is_silent = params.get("is_silent", False)
 
         self.lbl_gate.setText(f"Noise Gate: {gate} dB")
@@ -671,12 +482,10 @@ class MainWindow(QDialog, Ui_Dialog):
             f"Mid: {eq.get('mid', '--')}  |  "
             f"Treble: {eq.get('treble', '--')}"
         )
-        self.lbl_analyzed_stem.setText(
-            f"Parâmetros calculados a partir da faixa: '{self.last_analyzed_stem}'"
-        )
 
-        self.waveform_plot.plot_waveform(waveform, label=self.last_analyzed_stem)
-        self.eq_curve_plot.plot_eq_curve(eq_curve, label=self.last_analyzed_stem)
+        # Propaga os parâmetros calculados para a aba de Hardware, que é
+        # quem efetivamente envia esses dados para a ESP32-S3
+        self.tab_hardware.set_params(params)
 
         if is_silent:
             self._set_status(
@@ -684,8 +493,8 @@ class MainWindow(QDialog, Ui_Dialog):
             )
             self._notify(
                 "Tone Matching concluído (com aviso)",
-                f"A faixa '{self.last_analyzed_stem}' está silenciosa ou "
-                f"vazia — os parâmetros calculados podem não ser confiáveis.",
+                f"A faixa '{analyzed_stem}' está silenciosa ou vazia — "
+                f"os parâmetros calculados podem não ser confiáveis.",
                 icon=QSystemTrayIcon.MessageIcon.Warning,
             )
             QMessageBox.warning(
@@ -700,48 +509,24 @@ class MainWindow(QDialog, Ui_Dialog):
             self._set_status("Parâmetros calculados com sucesso!")
             self._notify(
                 "Tone Matching concluído",
-                f"Parâmetros calculados com sucesso para '{self.last_analyzed_stem}'.",
+                f"Parâmetros calculados com sucesso para '{analyzed_stem}'.",
             )
 
-    # Envio para hardware (ESP32-S3)
+    # Orquestração: aba Hardware
 
-    def start_send_hardware(self) -> None:
-        if not self.last_params:
-            QMessageBox.warning(
-                self,
-                "Nenhum parâmetro calculado",
-                "Execute a análise antes de enviar os dados para o pedal.",
-            )
-            return
-
-        logger.info("Iniciando envio para a ESP32-S3.")
-        self.btn_send_hardware.setEnabled(False)
-        self.btn_run_analysis.setEnabled(False)
+    def _on_hardware_send_started(self) -> None:
         self.btn_load.setEnabled(False)
         self.progress_bar.setRange(0, 0)
-
         self._notify(
             "Envio para o pedal iniciado",
             "Enviando os parâmetros calculados para a ESP32-S3…",
         )
 
-        # port=None → tenta autodetectar a placa; cai em modo simulado
-        # (MOCK) automaticamente se nenhuma porta compatível for encontrada.
-        # Isso permite usar o botão normalmente mesmo sem a placa em mãos.
-        self.hardware_thread = HardwareWorker(self.last_params, port=None)
-        self.hardware_thread.status.connect(self._set_status)
-        self.hardware_thread.finished.connect(self._on_hardware_finished)
-        self.hardware_thread.error.connect(self._on_hardware_error)
-        self.hardware_thread.start()
-
-    def _on_hardware_finished(self, was_mock: bool) -> None:
+    def _on_hardware_send_finished(self, was_mock: bool) -> None:
         logger.info("Workflow de envio para hardware finalizado.")
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
-
         self.btn_load.setEnabled(True)
-        self.btn_run_analysis.setEnabled(True)
-        self.btn_send_hardware.setEnabled(True)
 
         if was_mock:
             self._set_status(
@@ -753,15 +538,6 @@ class MainWindow(QDialog, Ui_Dialog):
                 "simulado (modo MOCK).",
                 icon=QSystemTrayIcon.MessageIcon.Warning,
             )
-            QMessageBox.information(
-                self,
-                "Envio simulado (sem hardware)",
-                "Nenhuma ESP32-S3 foi detectada na porta USB.\n\n"
-                "Os parâmetros NÃO foram enviados para uma placa real — "
-                "apenas simulados (modo MOCK), para fins de teste.\n\n"
-                "Conecte a placa via USB e tente novamente quando ela "
-                "estiver disponível."
-            )
         else:
             self._set_status("Parâmetros enviados para o pedal!")
             self._notify(
@@ -769,14 +545,11 @@ class MainWindow(QDialog, Ui_Dialog):
                 "Os parâmetros foram enviados com sucesso para a ESP32-S3.",
             )
 
-    def _on_hardware_error(self, err_msg: str) -> None:
+    def _on_hardware_send_error(self, err_msg: str) -> None:
         logger.error(f"Erro ao enviar para a ESP32-S3:\n{err_msg}")
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
-
         self.btn_load.setEnabled(True)
-        self.btn_run_analysis.setEnabled(bool(self.path_guitarra))
-        self.btn_send_hardware.setEnabled(bool(self.last_params))
 
         self._set_status("Erro ao enviar para o pedal.")
         self._notify(
@@ -784,128 +557,39 @@ class MainWindow(QDialog, Ui_Dialog):
             self._friendly_error_summary(err_msg),
             icon=QSystemTrayIcon.MessageIcon.Critical,
         )
-        QMessageBox.critical(
-            self,
-            "Erro de comunicação",
-            f"Não foi possível enviar os parâmetros para a ESP32-S3:\n\n"
-            f"{self._friendly_error_summary(err_msg)}\n\n"
-            f"Detalhes completos foram registrados no terminal/log.",
-        )
 
-    # Seleção de filtros (ESP32-S3)
+    # Erros genéricos (Demucs / Tone Matching)
 
-    def start_query_filters(self) -> None:
-        """Consulta a ESP32-S3 para descobrir quais filtros ela conhece."""
-        logger.info("Iniciando consulta de filtros disponíveis.")
-        self.btn_query_filters.setEnabled(False)
-        self.btn_apply_filters.setEnabled(False)
-        self.list_filters.clear()
-        self.lbl_filters_status.setText("Consultando…")
+    def _on_worker_error(self, err_msg: str) -> None:
+        logger.error(f"Erro recebido de uma aba:\n{err_msg}")
+        self.progress_bar.setRange(0, 100)
+        self.progress_bar.setValue(0)
+        self.btn_load.setEnabled(True)
 
+        self._set_status("Erro no processamento.")
         self._notify(
-            "Consulta de filtros iniciada",
-            "Perguntando ao pedal quais filtros estão disponíveis…",
-        )
-
-        self.filter_query_thread = FilterQueryWorker(port=None)
-        self.filter_query_thread.status.connect(self._set_status)
-        self.filter_query_thread.finished.connect(self._on_filters_received)
-        self.filter_query_thread.error.connect(self._on_filter_query_error)
-        self.filter_query_thread.start()
-
-    def _on_filters_received(self, filters: list, was_mock: bool) -> None:
-        logger.info(f"Filtros recebidos: {filters}")
-        self.btn_query_filters.setEnabled(True)
-
-        # Guarda os metadados completos de cada filtro (id, params) para uso
-        # posterior — a QListWidget só mostra o nome, então associamos o
-        # dicionário original a cada item via UserRole.
-        self._known_filters = {f["id"]: f for f in filters}
-
-        self.list_filters.clear()
-        for f in filters:
-            item = QListWidgetItem(f.get("name", f["id"]))
-            item.setData(Qt.ItemDataRole.UserRole, f["id"])
-            self.list_filters.addItem(item)
-
-        if was_mock:
-            self.lbl_filters_status.setText(
-                f"{len(filters)} filtro(s) de exemplo (modo simulado — sem placa conectada)."
-            )
-            self._notify(
-                "Filtros de exemplo carregados",
-                "Nenhuma ESP32-S3 detectada — exibindo filtros simulados para teste da interface.",
-                icon=QSystemTrayIcon.MessageIcon.Warning,
-            )
-        else:
-            self.lbl_filters_status.setText(
-                f"{len(filters)} filtro(s) disponível(is) no pedal."
-            )
-            self._notify(
-                "Filtros recebidos",
-                f"O pedal informou {len(filters)} filtro(s) disponível(is).",
-            )
-
-        self._set_status("Consulta de filtros concluída.")
-
-    def _on_filter_query_error(self, err_msg: str) -> None:
-        logger.error(f"Erro ao consultar filtros na ESP32-S3:\n{err_msg}")
-        self.btn_query_filters.setEnabled(True)
-        self.lbl_filters_status.setText("Falha ao consultar filtros.")
-
-        self._set_status("Erro ao consultar filtros do pedal.")
-        self._notify(
-            "Falha ao consultar filtros",
+            "Falha no processamento",
             self._friendly_error_summary(err_msg),
             icon=QSystemTrayIcon.MessageIcon.Critical,
         )
         QMessageBox.critical(
             self,
-            "Erro de comunicação",
-            f"Não foi possível consultar os filtros da ESP32-S3:\n\n"
+            "Erro",
             f"{self._friendly_error_summary(err_msg)}\n\n"
             f"Detalhes completos foram registrados no terminal/log.",
         )
 
-    def _on_filter_selection_changed(self) -> None:
-        self.btn_apply_filters.setEnabled(
-            len(self.list_filters.selectedItems()) > 0
-        )
-
-    def apply_selected_filters(self) -> None:
+    @staticmethod
+    def _friendly_error_summary(err_msg: str) -> str:
         """
-        Esqueleto inicial: por ora, apenas registra e notifica quais
-        filtros foram selecionados pelo usuário. O envio efetivo da
-        configuração de cada filtro (com seus parâmetros específicos,
-        ex.: freq_hz/gain_db de um low_shelf) depende de definirmos,
-        junto ao firmware, o formato exato de configuração por filtro —
-        próxima etapa depois deste esqueleto.
+        Extrai a última linha útil de um traceback do Python para exibir
+        um resumo legível na UI, em vez do stack trace completo.
+        Se não for possível extrair, devolve o texto original.
         """
-        selected_ids = [
-            item.data(Qt.ItemDataRole.UserRole)
-            for item in self.list_filters.selectedItems()
-        ]
-        selected_names = [item.text() for item in self.list_filters.selectedItems()]
-
-        logger.info(f"Filtros selecionados para aplicação: {selected_ids}")
-
-        self._set_status(
-            f"{len(selected_ids)} filtro(s) selecionado(s) — "
-            f"envio de configuração ainda não implementado."
-        )
-        self._notify(
-            "Filtros selecionados",
-            "Selecionados: " + ", ".join(selected_names),
-        )
-        QMessageBox.information(
-            self,
-            "Seleção registrada",
-            "Filtros selecionados:\n\n"
-            + "\n".join(f"• {name}" for name in selected_names)
-            + "\n\nO envio da configuração de cada filtro para o pedal "
-            "ainda será implementado — por enquanto, esta tela apenas "
-            "registra a seleção."
-        )
+        lines = [line.strip() for line in err_msg.strip().splitlines() if line.strip()]
+        if not lines:
+            return "Ocorreu um erro inesperado."
+        return lines[-1]
 
     # Playback original
 
@@ -993,35 +677,23 @@ class MainWindow(QDialog, Ui_Dialog):
 
     def _on_stem_selection_changed(self, new_stem: str) -> None:
         """
-        Para o stem atual quando o usuário troca de faixa no combo.
+        Para o stem atual quando o usuário troca de faixa no combo, e
+        propaga a nova seleção para a aba de Tone Matching — que, por sua
+        vez, invalida os resultados exibidos se o novo stem for diferente
+        do que gerou os últimos parâmetros calculados.
 
-        Além disso, se o stem selecionado for diferente do que gerou os
-        últimos parâmetros de Tone Matching (last_params), invalida esses
-        parâmetros e desabilita o envio para o hardware — evita que o
-        usuário envie, sem perceber, valores calculados para um stem
-        diferente do que está selecionado agora (ex.: analisou 'guitar',
-        trocou para 'bass' no combo, e clicaria 'Enviar' pensando que os
-        dados são do 'bass').
+        Também limpa o resumo de gate/EQ na barra de status e desabilita
+        o envio para hardware, já que os parâmetros deixam de corresponder
+        à faixa atualmente selecionada.
         """
         self.player_stem.stop()
 
-        if new_stem and new_stem != self.last_analyzed_stem and self.last_params:
-            logger.debug(
-                f"Stem selecionado ('{new_stem}') difere do último "
-                f"analisado ('{self.last_analyzed_stem}'); invalidando "
-                f"parâmetros calculados."
-            )
-            self.last_params = {}
-            self.btn_send_hardware.setEnabled(False)
+        self._propagate_stem_selection(new_stem)
+
+        if new_stem and new_stem != self.tab_tonematching.last_analyzed_stem:
             self.lbl_gate.setText("Noise Gate: -- dB")
             self.lbl_eq.setText("EQ — Bass: --  |  Mid: --  |  Treble: --")
-            self.lbl_analyzed_stem.setText("")
-            self.waveform_plot.clear_plot()
-            self.eq_curve_plot.clear_plot()
-            self._set_status(
-                f"Faixa alterada para '{new_stem}' — execute o Tone "
-                f"Matching novamente para esta faixa."
-            )
+            self.tab_hardware.set_params({})
 
     # Seek
 
@@ -1039,50 +711,6 @@ class MainWindow(QDialog, Ui_Dialog):
     def _on_stem_position_changed(self, pos: int) -> None:
         if not self.slider_seek_stem.isSliderDown():
             self.slider_seek_stem.setValue(pos)
-
-    # Erro
-
-    def _on_error(self, err_msg: str) -> None:
-        logger.error(f"Erro recebido pela UI:\n{err_msg}")
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(0)
-        self.btn_load.setEnabled(True)
-
-        # Corrige o botão de análise após um erro de separação: sem stems
-        # disponíveis, não há como o combo estar em um estado válido.
-        if not self.path_guitarra:
-            self.combo_stems.clear()
-            self.combo_stems.setEnabled(False)
-
-        # Reabilita apenas os botões que fazem sentido no estado atual
-        self.btn_run_demucs.setEnabled(bool(self.path_original))
-        self.btn_run_analysis.setEnabled(bool(self.path_guitarra))
-        self.btn_send_hardware.setEnabled(bool(self.last_params))
-
-        self._set_status("Erro no processamento.")
-        self._notify(
-            "Falha no processamento",
-            self._friendly_error_summary(err_msg),
-            icon=QSystemTrayIcon.MessageIcon.Critical,
-        )
-        QMessageBox.critical(
-            self,
-            "Erro",
-            f"{self._friendly_error_summary(err_msg)}\n\n"
-            f"Detalhes completos foram registrados no terminal/log.",
-        )
-
-    @staticmethod
-    def _friendly_error_summary(err_msg: str) -> str:
-        """
-        Extrai a última linha útil de um traceback do Python para exibir
-        um resumo legível na UI, em vez do stack trace completo.
-        Se não for possível extrair, devolve o texto original.
-        """
-        lines = [line.strip() for line in err_msg.strip().splitlines() if line.strip()]
-        if not lines:
-            return "Ocorreu um erro inesperado."
-        return lines[-1]
 
     # Utilitários
 
@@ -1123,38 +751,10 @@ class MainWindow(QDialog, Ui_Dialog):
         mins, secs = divmod(total_secs, 60)
         return f"{mins:02d}:{secs:02d}"
 
-    def _stop_thread(self, attr: str) -> None:
-        thread = getattr(self, attr, None)
-        if thread is None:
-            return
-
-        try:
-            if not thread.isRunning():
-                setattr(self, attr, None)
-                return
-        except RuntimeError:
-            logger.info(f"{attr} já foi descartado pela Qt.")
-            setattr(self, attr, None)
-            return
-
-        logger.info(f"Parando {attr}…")
-        try:
-            thread.quit()
-            if not thread.wait(3000):
-                logger.warning(
-                    f"{attr} não encerrou em 3s; forçando término."
-                )
-                thread.terminate()
-                thread.wait(1000)
-        except RuntimeError:
-            logger.info(f"{attr} foi descartado durante o shutdown.")
-        finally:
-            setattr(self, attr, None)
-
     # Cleanup
 
     def closeEvent(self, event) -> None:
-        """Para players e aguarda threads antes de fechar a janela."""
+        """Para players e aguarda threads das abas antes de fechar a janela."""
         logger.info("Encerrando aplicação — finalizando threads e players…")
         try:
             self.player_orig.stop()
@@ -1166,14 +766,16 @@ class MainWindow(QDialog, Ui_Dialog):
         except RuntimeError:
             pass
 
-        for attr in (
-            "demucs_thread",
-            "analysis_thread",
-            "metadata_thread",
-            "hardware_thread",
-            "filter_query_thread",
-        ):
-            self._stop_thread(attr)
+        if self.metadata_thread is not None:
+            try:
+                self.metadata_thread.quit()
+                self.metadata_thread.wait(2000)
+            except RuntimeError:
+                pass
+
+        self.tab_demucs.stop_thread()
+        self.tab_tonematching.stop_thread()
+        self.tab_hardware.stop_threads()
 
         try:
             event.accept()

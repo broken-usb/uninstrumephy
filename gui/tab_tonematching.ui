@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>TabToneMatching</class>
+ <widget class="QWidget" name="TabToneMatching">
+  <layout class="QVBoxLayout" name="toneMatchingTabLayout">
+   <property name="spacing">
+    <number>10</number>
+   </property>
+   <property name="leftMargin">
+    <number>16</number>
+   </property>
+   <property name="topMargin">
+    <number>16</number>
+   </property>
+   <property name="rightMargin">
+    <number>16</number>
+   </property>
+   <property name="bottomMargin">
+    <number>16</number>
+   </property>
+   <item>
+    <layout class="QHBoxLayout" name="toneMatchingHeaderLayout">
+     <item>
+      <widget class="QLabel" name="lbl_tonematching_title">
+       <property name="text">
+        <string>📊  Tone Matching (Librosa)</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="toneMatchingHeaderSpacer">
+       <property name="orientation">
+        <enum>Qt::Orientation::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btn_run_analysis">
+       <property name="enabled">
+        <bool>false</bool>
+       </property>
+       <property name="text">
+        <string>📊  Executar Tone Matching</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QFrame" name="lineSepToneMatchingTop">
+     <property name="frameShape">
+      <enum>QFrame::Shape::HLine</enum>
+     </property>
+     <property name="frameShadow">
+      <enum>QFrame::Shadow::Plain</enum>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QLabel" name="lbl_analyzed_stem">
+     <property name="text">
+      <string></string>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">color: #888;</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QTabWidget" name="tabsToneMatching">
+     <property name="minimumSize">
+      <size>
+       <width>0</width>
+       <height>260</height>
+      </size>
+     </property>
+     <widget class="QWidget" name="tabWaveform">
+      <attribute name="title">
+       <string>🌊  Forma de Onda</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="waveformContainerLayout">
+       <property name="leftMargin">
+        <number>4</number>
+       </property>
+       <property name="topMargin">
+        <number>4</number>
+       </property>
+       <property name="rightMargin">
+        <number>4</number>
+       </property>
+       <property name="bottomMargin">
+        <number>4</number>
+       </property>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="tabEqCurve">
+      <attribute name="title">
+       <string>🎚  Curva de EQ</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="eqCurveContainerLayout">
+       <property name="leftMargin">
+        <number>4</number>
+       </property>
+       <property name="topMargin">
+        <number>4</number>
+       </property>
+       <property name="rightMargin">
+        <number>4</number>
+       </property>
+       <property name="bottomMargin">
+        <number>4</number>
+       </property>
+      </layout>
+     </widget>
+     <widget class="QWidget" name="tabSpectralCentroid">
+      <attribute name="title">
+       <string>✨  Brilho (Spectral Centroid)</string>
+      </attribute>
+      <layout class="QVBoxLayout" name="spectralCentroidContainerLayout">
+       <property name="leftMargin">
+        <number>4</number>
+       </property>
+       <property name="topMargin">
+        <number>4</number>
+       </property>
+       <property name="rightMargin">
+        <number>4</number>
+       </property>
+       <property name="bottomMargin">
+        <number>4</number>
+       </property>
+      </layout>
+     </widget>
+    </widget>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

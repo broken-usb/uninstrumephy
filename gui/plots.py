@@ -119,3 +119,71 @@ class EQCurvePlot(FigureCanvasQTAgg):
             self._ax.set_title(label, fontsize=9)
 
         self.draw_idle()
+
+
+class SpectralCentroidPlot(FigureCanvasQTAgg):
+    """
+    Widget Qt que desenha a evolução do centroide espectral (spectral
+    centroid) de um stem ao longo do tempo — uma medida de "brilho" do
+    timbre: valores mais altos indicam um som mais agudo/brilhante,
+    valores mais baixos indicam um som mais grave/escuro.
+
+    Espera o formato retornado por AudioAnalyzer._compute_spectral_centroid:
+        curve: [{"time_s": float, "hz": float}, ...]
+        mean_hz: float (centroide médio da faixa inteira)
+    """
+
+    def __init__(self, parent=None) -> None:
+        self.figure = Figure(figsize=(5, 1.8), tight_layout=True)
+        super().__init__(self.figure)
+        self.setParent(parent)
+        self._ax = self.figure.add_subplot(111)
+        self.clear_plot()
+
+    def clear_plot(self) -> None:
+        self._ax.clear()
+        self._ax.set_xticks([])
+        self._ax.set_yticks([])
+        self._ax.text(
+            0.5, 0.5, "Sem dados",
+            ha="center", va="center",
+            transform=self._ax.transAxes,
+            fontsize=9, color="gray",
+        )
+        self.draw_idle()
+
+    def plot_spectral_centroid(
+        self,
+        curve: list[dict],
+        mean_hz: float = 0.0,
+        label: str = "",
+    ) -> None:
+        if not curve:
+            self.clear_plot()
+            return
+
+        times = [p["time_s"] for p in curve]
+        hzs   = [p["hz"] for p in curve]
+
+        self._ax.clear()
+        self._ax.plot(times, hzs, color="#c23bd4", linewidth=1.4)
+        self._ax.fill_between(times, hzs, 0, color="#c23bd4", alpha=0.12)
+
+        if mean_hz > 0:
+            self._ax.axhline(
+                mean_hz, color="gray", linestyle="--", linewidth=0.8, alpha=0.7
+            )
+            self._ax.text(
+                times[-1], mean_hz, f" média: {mean_hz:.0f} Hz",
+                fontsize=7, color="gray", va="center",
+            )
+
+        self._ax.set_xlabel("Tempo (s)", fontsize=8)
+        self._ax.set_ylabel("Hz", fontsize=8)
+        self._ax.tick_params(axis="both", labelsize=7)
+        self._ax.grid(True, linestyle=":", linewidth=0.5, alpha=0.5)
+
+        if label:
+            self._ax.set_title(label, fontsize=9)
+
+        self.draw_idle()

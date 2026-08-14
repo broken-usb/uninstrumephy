@@ -6,14 +6,14 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>860</width>
-    <height>580</height>
+    <width>900</width>
+    <height>640</height>
    </rect>
   </property>
   <property name="minimumSize">
    <size>
-    <width>700</width>
-    <height>480</height>
+    <width>760</width>
+    <height>540</height>
    </size>
   </property>
   <property name="windowTitle">
@@ -137,13 +137,13 @@
       <widget class="QFrame" name="frameLeft">
        <property name="minimumSize">
         <size>
-         <width>200</width>
+         <width>190</width>
          <height>0</height>
         </size>
        </property>
        <property name="maximumSize">
         <size>
-         <width>260</width>
+         <width>230</width>
          <height>16777215</height>
         </size>
        </property>
@@ -202,32 +202,15 @@
          </widget>
         </item>
         <item>
-         <widget class="QPushButton" name="btn_run_demucs">
-          <property name="enabled">
-           <bool>false</bool>
-          </property>
+         <widget class="QLabel" name="lbl_metadata">
           <property name="text">
-           <string>⚙  Separar Faixas  (Demucs)</string>
+           <string>Nenhuma informação disponível.</string>
           </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="btn_run_analysis">
-          <property name="enabled">
-           <bool>false</bool>
+          <property name="alignment">
+           <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set>
           </property>
-          <property name="text">
-           <string>📊  Tone Matching  (Librosa)</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QPushButton" name="btn_send_hardware">
-          <property name="enabled">
-           <bool>false</bool>
-          </property>
-          <property name="text">
-           <string>🔌  Enviar para o Pedal  (ESP32-S3)</string>
+          <property name="wordWrap">
+           <bool>true</bool>
           </property>
          </widget>
         </item>
@@ -362,101 +345,13 @@
         </widget>
        </item>
        <item>
-        <widget class="QFrame" name="frameMetadata">
+        <widget class="QTabWidget" name="tabsMain">
          <property name="sizePolicy">
           <sizepolicy hsizetype="Preferred" vsizetype="Expanding">
            <horstretch>0</horstretch>
            <verstretch>1</verstretch>
           </sizepolicy>
          </property>
-         <property name="frameShape">
-          <enum>QFrame::Shape::NoFrame</enum>
-         </property>
-         <layout class="QVBoxLayout" name="metadataLayout">
-          <property name="leftMargin">
-           <number>14</number>
-          </property>
-          <property name="topMargin">
-           <number>10</number>
-          </property>
-          <property name="rightMargin">
-           <number>14</number>
-          </property>
-          <property name="bottomMargin">
-           <number>10</number>
-          </property>
-          <item>
-           <widget class="QLabel" name="lbl_metadata">
-            <property name="text">
-             <string>Nenhuma informação disponível.</string>
-            </property>
-            <property name="alignment">
-             <set>Qt::AlignmentFlag::AlignLeading|Qt::AlignmentFlag::AlignLeft|Qt::AlignmentFlag::AlignTop</set>
-            </property>
-            <property name="wordWrap">
-             <bool>true</bool>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QLabel" name="lbl_analyzed_stem">
-            <property name="text">
-             <string></string>
-            </property>
-            <property name="styleSheet">
-             <string notr="true">color: #888;</string>
-            </property>
-           </widget>
-          </item>
-          <item>
-           <widget class="QWidget" name="containerWaveform" native="true">
-            <property name="minimumSize">
-             <size>
-              <width>0</width>
-              <height>90</height>
-             </size>
-            </property>
-            <layout class="QVBoxLayout" name="waveformContainerLayout">
-             <property name="leftMargin">
-              <number>0</number>
-             </property>
-             <property name="topMargin">
-              <number>0</number>
-             </property>
-             <property name="rightMargin">
-              <number>0</number>
-             </property>
-             <property name="bottomMargin">
-              <number>0</number>
-             </property>
-            </layout>
-           </widget>
-          </item>
-          <item>
-           <widget class="QWidget" name="containerEqCurve" native="true">
-            <property name="minimumSize">
-             <size>
-              <width>0</width>
-              <height>100</height>
-             </size>
-            </property>
-            <layout class="QVBoxLayout" name="eqCurveContainerLayout">
-             <property name="leftMargin">
-              <number>0</number>
-             </property>
-             <property name="topMargin">
-              <number>0</number>
-             </property>
-             <property name="rightMargin">
-              <number>0</number>
-             </property>
-             <property name="bottomMargin">
-              <number>0</number>
-             </property>
-            </layout>
-           </widget>
-          </item>
-         </layout>
         </widget>
        </item>
        <item>
@@ -484,28 +379,25 @@
            <number>14</number>
           </property>
           <property name="topMargin">
-           <number>10</number>
+           <number>8</number>
           </property>
           <property name="rightMargin">
            <number>14</number>
           </property>
           <property name="bottomMargin">
-           <number>10</number>
+           <number>8</number>
           </property>
           <item>
-           <layout class="QVBoxLayout" name="origColLayout">
-            <property name="spacing">
-             <number>6</number>
-            </property>
+           <layout class="QVBoxLayout" name="playbackOrigLayout">
             <item>
              <widget class="QLabel" name="lbl_section_orig">
               <property name="text">
-               <string>ORIGINAL</string>
+               <string>Música Original</string>
               </property>
              </widget>
             </item>
             <item>
-             <layout class="QHBoxLayout" name="origControlsLayout">
+             <layout class="QHBoxLayout" name="playbackOrigControlsLayout">
               <property name="spacing">
                <number>6</number>
               </property>
@@ -573,19 +465,13 @@
            </widget>
           </item>
           <item>
-           <layout class="QVBoxLayout" name="stemColLayout">
-            <property name="spacing">
-             <number>6</number>
-            </property>
+           <layout class="QVBoxLayout" name="playbackStemLayout">
             <item>
              <layout class="QHBoxLayout" name="stemHeaderLayout">
-              <property name="spacing">
-               <number>8</number>
-              </property>
               <item>
                <widget class="QLabel" name="lbl_section_stem">
                 <property name="text">
-                 <string>FAIXA ISOLADA</string>
+                 <string>Faixa Isolada</string>
                 </property>
                </widget>
               </item>
@@ -656,127 +542,6 @@
       </layout>
      </item>
     </layout>
-   </item>
-   <item>
-    <widget class="QFrame" name="frameFilters">
-     <property name="frameShape">
-      <enum>QFrame::Shape::NoFrame</enum>
-     </property>
-     <layout class="QVBoxLayout" name="filtersLayout">
-      <property name="spacing">
-       <number>8</number>
-      </property>
-      <property name="leftMargin">
-       <number>16</number>
-      </property>
-      <property name="topMargin">
-       <number>8</number>
-      </property>
-      <property name="rightMargin">
-       <number>16</number>
-      </property>
-      <property name="bottomMargin">
-       <number>8</number>
-      </property>
-      <item>
-       <widget class="QFrame" name="lineSepFilters">
-        <property name="frameShape">
-         <enum>QFrame::Shape::HLine</enum>
-        </property>
-        <property name="frameShadow">
-         <enum>QFrame::Shadow::Plain</enum>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <layout class="QHBoxLayout" name="filtersHeaderLayout">
-        <item>
-         <widget class="QLabel" name="lbl_filters_title">
-          <property name="text">
-           <string>🎛  Filtros do Pedal (ESP32-S3)</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <spacer name="filtersHeaderSpacer">
-          <property name="orientation">
-           <enum>Qt::Orientation::Horizontal</enum>
-          </property>
-          <property name="sizeHint" stdset="0">
-           <size>
-            <width>40</width>
-            <height>20</height>
-           </size>
-          </property>
-         </spacer>
-        </item>
-        <item>
-         <widget class="QPushButton" name="btn_query_filters">
-          <property name="text">
-           <string>🔍  Consultar Filtros Disponíveis</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item>
-       <widget class="QListWidget" name="list_filters">
-        <property name="minimumSize">
-         <size>
-          <width>0</width>
-          <height>110</height>
-         </size>
-        </property>
-        <property name="maximumSize">
-         <size>
-          <width>16777215</width>
-          <height>150</height>
-         </size>
-        </property>
-        <property name="selectionMode">
-         <enum>QAbstractItemView::SelectionMode::MultiSelection</enum>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <layout class="QHBoxLayout" name="filtersFooterLayout">
-        <item>
-         <widget class="QLabel" name="lbl_filters_status">
-          <property name="text">
-           <string>Nenhum filtro consultado ainda.</string>
-          </property>
-          <property name="styleSheet">
-           <string notr="true">color: #888;</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <spacer name="filtersFooterSpacer">
-          <property name="orientation">
-           <enum>Qt::Orientation::Horizontal</enum>
-          </property>
-          <property name="sizeHint" stdset="0">
-           <size>
-            <width>40</width>
-            <height>20</height>
-           </size>
-          </property>
-         </spacer>
-        </item>
-        <item>
-         <widget class="QPushButton" name="btn_apply_filters">
-          <property name="enabled">
-           <bool>false</bool>
-          </property>
-          <property name="text">
-           <string>✅  Aplicar Filtros Selecionados</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-     </layout>
-    </widget>
    </item>
    <item>
     <widget class="QFrame" name="frameStatus">

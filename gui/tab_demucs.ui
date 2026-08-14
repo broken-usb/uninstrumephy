@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>TabDemucs</class>
+ <widget class="QWidget" name="TabDemucs">
+  <layout class="QVBoxLayout" name="demucsTabLayout">
+   <property name="spacing">
+    <number>12</number>
+   </property>
+   <property name="leftMargin">
+    <number>16</number>
+   </property>
+   <property name="topMargin">
+    <number>16</number>
+   </property>
+   <property name="rightMargin">
+    <number>16</number>
+   </property>
+   <property name="bottomMargin">
+    <number>16</number>
+   </property>
+   <item>
+    <widget class="QLabel" name="lbl_demucs_title">
+     <property name="text">
+      <string>⚙  Separação de Faixas (Demucs)</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QFrame" name="lineSepDemucsTop">
+     <property name="frameShape">
+      <enum>QFrame::Shape::HLine</enum>
+     </property>
+     <property name="frameShadow">
+      <enum>QFrame::Shadow::Plain</enum>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <layout class="QGridLayout" name="demucsOptionsGrid">
+     <property name="horizontalSpacing">
+      <number>12</number>
+     </property>
+     <property name="verticalSpacing">
+      <number>8</number>
+     </property>
+     <item row="0" column="0">
+      <widget class="QLabel" name="lbl_demucs_model">
+       <property name="text">
+        <string>Modelo:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="1">
+      <widget class="QComboBox" name="combo_demucs_model"/>
+     </item>
+     <item row="0" column="2">
+      <widget class="QLabel" name="lbl_demucs_device">
+       <property name="text">
+        <string>Device:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="0" column="3">
+      <widget class="QComboBox" name="combo_demucs_device"/>
+     </item>
+     <item row="1" column="0">
+      <widget class="QLabel" name="lbl_demucs_shifts">
+       <property name="text">
+        <string>Shifts:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="1" column="1">
+      <widget class="QSpinBox" name="spin_demucs_shifts">
+       <property name="minimum">
+        <number>0</number>
+       </property>
+       <property name="maximum">
+        <number>10</number>
+       </property>
+       <property name="value">
+        <number>1</number>
+       </property>
+       <property name="toolTip">
+        <string>Número de deslocamentos aleatórios aplicados durante a inferência (shift trick). Valores maiores tendem a melhorar a qualidade da separação, ao custo de tempo de processamento proporcionalmente maior. 0 desativa o truque (mais rápido).</string>
+       </property>
+      </widget>
+     </item>
+     <item row="1" column="2">
+      <widget class="QLabel" name="lbl_demucs_overlap">
+       <property name="text">
+        <string>Overlap:</string>
+       </property>
+      </widget>
+     </item>
+     <item row="1" column="3">
+      <widget class="QDoubleSpinBox" name="spin_demucs_overlap">
+       <property name="minimum">
+        <double>0.000000000000000</double>
+       </property>
+       <property name="maximum">
+        <double>0.990000000000000</double>
+       </property>
+       <property name="singleStep">
+        <double>0.050000000000000</double>
+       </property>
+       <property name="value">
+        <double>0.250000000000000</double>
+       </property>
+       <property name="toolTip">
+        <string>Sobreposição entre janelas de processamento (0.0–0.99). Valores maiores suavizam transições entre blocos, ao custo de mais tempo de processamento.</string>
+       </property>
+      </widget>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QLabel" name="lbl_demucs_options_hint">
+     <property name="text">
+      <string>Valores mais altos de Shifts/Overlap aumentam a qualidade da separação, mas tornam o processamento mais lento.</string>
+     </property>
+     <property name="styleSheet">
+      <string notr="true">color: #888; font-size: 11px;</string>
+     </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QPushButton" name="btn_run_demucs">
+     <property name="enabled">
+      <bool>false</bool>
+     </property>
+     <property name="text">
+      <string>⚙  Separar Faixas</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <spacer name="demucsTabSpacer">
+     <property name="orientation">
+      <enum>Qt::Orientation::Vertical</enum>
+     </property>
+     <property name="sizeHint" stdset="0">
+      <size>
+       <width>20</width>
+       <height>40</height>
+      </size>
+     </property>
+    </spacer>
+   </item>
+  </layout>
+ </widget>
+ <resources/>
+ <connections/>
+</ui>

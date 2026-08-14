@@ -23,34 +23,94 @@ class AudioSeparator:
     """
     Separa as faixas de um arquivo de áudio usando o modelo Demucs.
 
-    O modelo é carregado uma única vez e reutilizado via cache de classe
-    (_cached_model), evitando recarregamentos desnecessários entre chamadas.
+    O modelo é carregado uma única vez por combinação (model_name, device)
+    e reutilizado via cache de classe (_cached_models), evitando
+    recarregamentos desnecessários entre chamadas com a mesma configuração.
 
-    Stems disponíveis no htdemucs_6s:
-        guitar, bass, drums, piano, vocals, other
+    Modelos pré-treinados oficiais suportados (AVAILABLE_MODELS):
+        htdemucs      - 4 stems (vocals, drums, bass, other), padrão mais recente
+        htdemucs_ft   - variante fine-tuned do htdemucs, mais lenta e precisa
+        htdemucs_6s   - 6 stems (vocals, drums, bass, guitar, piano, other)
+        mdx_extra     - modelo MDX, 4 stems, arquitetura diferente do htdemucs
     """
 
-    _cached_model = None
+    _cached_models: dict[tuple[str, str], object] = {}
 
-    MODEL_NAME = "htdemucs_6s"
+    AVAILABLE_MODELS: list[str] = ["htdemucs", "htdemucs_ft", "htdemucs_6s", "mdx_extra"]
+    MODEL_NAME = "htdemucs_6s"    # mantido por compatibilidade com código existente
     DEFAULT_STEM = "guitar"
 
-    def __init__(self, output_dir: str = "output") -> None:
+    # Limites razoáveis para os parâmetros de qualidade x velocidade,
+    # usados para validar entradas vindas da UI
+    MIN_SHIFTS, MAX_SHIFTS = 0, 10
+    MIN_OVERLAP, MAX_OVERLAP = 0.0, 0.99
+
+    def __init__(
+        self,
+        output_dir: str = "output",
+        model_name: str | None = None,
+        device: str | None = None,
+        shifts: int = 1,
+        overlap: float = 0.25,
+    ) -> None:
+        """
+        Args:
+            output_dir: Diretório base onde os stems separados são salvos.
+            model_name: Nome do modelo Demucs a usar (ver AVAILABLE_MODELS).
+                Se None, usa MODEL_NAME (htdemucs_6s), mantendo o
+                comportamento padrão anterior.
+            device: "cuda" ou "cpu". Se None, detecta automaticamente
+                (usa CUDA se disponível).
+            shifts: Número de deslocamentos aleatórios aplicados ao áudio
+                durante a inferência (shift trick) — valores maiores
+                tendem a melhorar a qualidade da separação ao custo de
+                tempo de processamento proporcionalmente maior. 0 desativa
+                o truque (mais rápido, qualidade padrão). Default: 1.
+            overlap: Sobreposição entre janelas de processamento (0.0–0.99).
+                Valores maiores suavizam transições entre blocos ao custo
+                de mais tempo de processamento. Default: 0.25 (padrão do
+                Demucs).
+        """
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.model_name = model_name or self.MODEL_NAME
+        if self.model_name not in self.AVAILABLE_MODELS:
+            raise ValueError(
+                f"Modelo '{self.model_name}' não reconhecido. "
+                f"Disponíveis: {self.AVAILABLE_MODELS}"
+            )
+
+        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
         logger.info(f"Device selecionado: {self.device}")
 
-        # Cache global do modelo
-        if AudioSeparator._cached_model is None:
-            logger.info(f"Carregando modelo Demucs: {self.MODEL_NAME}")
-            model = get_model(self.MODEL_NAME)
+        self.shifts = self._clamp(shifts, self.MIN_SHIFTS, self.MAX_SHIFTS, "shifts")
+        self.overlap = self._clamp(overlap, self.MIN_OVERLAP, self.MAX_OVERLAP, "overlap")
+
+        # Cache por combinação (modelo, device) — permite trocar de
+        # modelo/dispositivo entre execuções sem recarregar do zero algo
+        # que já foi carregado antes na mesma sessão
+        cache_key = (self.model_name, self.device)
+        if cache_key not in AudioSeparator._cached_models:
+            logger.info(
+                f"Carregando modelo Demucs: {self.model_name} (device={self.device})"
+            )
+            model = get_model(self.model_name)
             model.to(self.device)
             model.eval()
-            AudioSeparator._cached_model = model
+            AudioSeparator._cached_models[cache_key] = model
 
-        self.model = AudioSeparator._cached_model
+        self.model = AudioSeparator._cached_models[cache_key]
+
+    @staticmethod
+    def _clamp(value: float, low: float, high: float, name: str) -> float:
+        """Garante que um parâmetro numérico da UI fique dentro de limites seguros."""
+        if value < low or value > high:
+            logger.warning(
+                f"Parâmetro '{name}'={value} fora do intervalo [{low}, {high}]; "
+                f"ajustando para o limite mais próximo."
+            )
+        return max(low, min(high, value))
 
     # Separação
 
@@ -89,7 +149,7 @@ class AudioSeparator:
         if stem_name not in self.model.sources:
             raise ValueError(
                 f"Stem '{stem_name}' não é suportado pelo modelo "
-                f"{self.MODEL_NAME}. Disponíveis: {list(self.model.sources)}"
+                f"{self.model_name}. Disponíveis: {list(self.model.sources)}"
             )
 
         logger.info(f"Processando áudio: {audio_path} (stem alvo: {stem_name})")
@@ -130,11 +190,20 @@ class AudioSeparator:
 
         # Inferência
         self._notify(progress_cb, "Executando separação Demucs (IA)…")
-        logger.info("Executando separação Demucs…")
+        logger.info(
+            f"Executando separação Demucs… "
+            f"(shifts={self.shifts}, overlap={self.overlap})"
+        )
         infer_start = time.monotonic()
 
         with torch.no_grad():
-            sources = apply_model(self.model, wav, device=self.device)
+            sources = apply_model(
+                self.model,
+                wav,
+                device=self.device,
+                shifts=self.shifts,
+                overlap=self.overlap,
+            )
 
         logger.info(
             f"Inferência Demucs concluída em "
@@ -201,7 +270,7 @@ class AudioSeparator:
 
         digest = hashlib.sha1(hash_input.encode("utf-8")).hexdigest()[:10]
         safe_name = f"{audio_path.stem}_{digest}"
-        return self.output_dir / self.MODEL_NAME / safe_name
+        return self.output_dir / self.model_name / safe_name
 
     @staticmethod
     def _notify(
