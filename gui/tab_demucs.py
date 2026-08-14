@@ -5,7 +5,7 @@ import time
 import traceback
 from pathlib import Path
 
-from PyQt6.QtWidgets import QWidget
+from PyQt6.QtWidgets import QWidget, QMessageBox
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from gui.ui_tab_demucs import Ui_TabDemucs
@@ -28,6 +28,7 @@ class DemucsWorker(QThread):
         device: str,
         shifts: int,
         overlap: float,
+        force_reprocess: bool = False,
     ) -> None:
         super().__init__()
         self.audio_path = audio_path
@@ -35,6 +36,7 @@ class DemucsWorker(QThread):
         self.device = device
         self.shifts = shifts
         self.overlap = overlap
+        self.force_reprocess = force_reprocess
 
     def run(self) -> None:
         start_time = time.monotonic()
@@ -42,7 +44,8 @@ class DemucsWorker(QThread):
             logger.info(
                 f"Iniciando separação: {self.audio_path} "
                 f"(model={self.model_name}, device={self.device}, "
-                f"shifts={self.shifts}, overlap={self.overlap})"
+                f"shifts={self.shifts}, overlap={self.overlap}, "
+                f"force_reprocess={self.force_reprocess})"
             )
 
             separator = AudioSeparator(
@@ -56,6 +59,7 @@ class DemucsWorker(QThread):
             guitar_path = separator.extract_guitar(
                 self.audio_path,
                 progress_cb=self.status.emit,
+                force_reprocess=self.force_reprocess,
             )
 
             if not guitar_path:
@@ -92,6 +96,59 @@ class TabDemucs(QWidget, Ui_TabDemucs):
     separation_error    = pyqtSignal(str)
     status_message       = pyqtSignal(str)
 
+    # Textos exibidos nos popups de ajuda ([?]) ao lado de cada opção,
+    # em linguagem simples para quem não conhece os termos técnicos do
+    # Demucs a fundo.
+    HELP_TEXTS: dict[str, tuple[str, str]] = {
+        "model": (
+            "Modelo",
+            "Escolhe qual rede neural treinada é usada para separar os "
+            "instrumentos:\n\n"
+            "• htdemucs — modelo padrão mais recente, separa em 4 faixas "
+            "(vocals, drums, bass, other). Bom equilíbrio entre "
+            "velocidade e qualidade.\n\n"
+            "• htdemucs_ft — versão \"fine-tuned\" do htdemucs, mais "
+            "lenta, geralmente com qualidade um pouco melhor.\n\n"
+            "• htdemucs_6s — separa em 6 faixas, incluindo guitar e "
+            "piano isolados. É o modelo usado por padrão neste projeto.\n\n"
+            "• mdx_extra — arquitetura diferente (MDX), também separa em "
+            "4 faixas.",
+        ),
+        "device": (
+            "Dispositivo",
+            "Escolhe onde a separação é processada:\n\n"
+            "• auto — detecta automaticamente se há uma GPU compatível "
+            "(CUDA) disponível e a usa; caso contrário, usa o "
+            "processador (CPU).\n\n"
+            "• cpu — força o uso do processador, mais lento, mas "
+            "funciona em qualquer computador.\n\n"
+            "• cuda — força o uso da GPU (só funciona se você tiver uma "
+            "placa de vídeo NVIDIA compatível instalada).",
+        ),
+        "shifts": (
+            "Shifts",
+            "Número de pequenos deslocamentos aleatórios aplicados ao "
+            "áudio antes de cada tentativa de separação (o resultado "
+            "final é uma média entre as tentativas).\n\n"
+            "Valores mais altos tendem a melhorar a qualidade da "
+            "separação, mas o tempo de processamento aumenta "
+            "proporcionalmente (shifts=4 leva ~4x mais tempo que "
+            "shifts=1).\n\n"
+            "0 desativa esse recurso (processamento mais rápido, "
+            "qualidade padrão).",
+        ),
+        "overlap": (
+            "Overlap",
+            "Define o quanto as janelas de processamento do áudio se "
+            "sobrepõem entre si (de 0.0 a 0.99).\n\n"
+            "Valores mais altos suavizam as transições entre os "
+            "pedaços processados, reduzindo a chance de \"cliques\" ou "
+            "cortes perceptíveis no resultado — mas também aumentam o "
+            "tempo de processamento.\n\n"
+            "0.25 é o valor padrão recomendado pelo Demucs.",
+        ),
+    }
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setupUi(self)
@@ -106,6 +163,16 @@ class TabDemucs(QWidget, Ui_TabDemucs):
         self.demucs_thread: DemucsWorker | None = None
 
         self.btn_run_demucs.clicked.connect(self.start_demucs)
+
+        self.btn_help_model.clicked.connect(lambda: self._show_help("model"))
+        self.btn_help_device.clicked.connect(lambda: self._show_help("device"))
+        self.btn_help_shifts.clicked.connect(lambda: self._show_help("shifts"))
+        self.btn_help_overlap.clicked.connect(lambda: self._show_help("overlap"))
+
+    def _show_help(self, key: str) -> None:
+        """Exibe um popup explicando, em linguagem simples, o que a opção faz."""
+        title, text = self.HELP_TEXTS[key]
+        QMessageBox.information(self, title, text)
 
     # API pública, chamada pelo main_gui.py
 
@@ -126,6 +193,7 @@ class TabDemucs(QWidget, Ui_TabDemucs):
         self.combo_demucs_device.setEnabled(not busy)
         self.spin_demucs_shifts.setEnabled(not busy)
         self.spin_demucs_overlap.setEnabled(not busy)
+        self.check_force_reprocess.setEnabled(not busy)
 
     # Lógica interna
 
@@ -139,10 +207,12 @@ class TabDemucs(QWidget, Ui_TabDemucs):
         device = None if device_choice == "auto" else device_choice
         shifts = self.spin_demucs_shifts.value()
         overlap = self.spin_demucs_overlap.value()
+        force_reprocess = self.check_force_reprocess.isChecked()
 
         logger.info(
             f"Iniciando workflow Demucs (model={model_name}, "
-            f"device={device_choice}, shifts={shifts}, overlap={overlap})."
+            f"device={device_choice}, shifts={shifts}, overlap={overlap}, "
+            f"force_reprocess={force_reprocess})."
         )
         self.set_busy(True)
         self.separation_started.emit()
@@ -153,6 +223,7 @@ class TabDemucs(QWidget, Ui_TabDemucs):
             device=device,
             shifts=shifts,
             overlap=overlap,
+            force_reprocess=force_reprocess,
         )
         self.demucs_thread.status.connect(self.status_message.emit)
         self.demucs_thread.finished.connect(self._on_finished)

@@ -119,6 +119,7 @@ class AudioSeparator:
         audio_path: str,
         stem_name: str = DEFAULT_STEM,
         progress_cb: Callable[[str], None] | None = None,
+        force_reprocess: bool = False,
     ) -> str:
         """
         Separa todos os stems do arquivo de áudio e retorna o caminho
@@ -131,6 +132,13 @@ class AudioSeparator:
             audio_path:  Caminho para o arquivo de áudio de entrada.
             stem_name:   Nome do stem desejado (deve existir em model.sources).
             progress_cb: Callback opcional para progresso (str → None).
+            force_reprocess: Se True, ignora qualquer cache existente para
+                esta combinação (arquivo, modelo) e roda a separação de
+                novo, sobrescrevendo os stems já salvos em disco. Útil
+                para forçar uma nova execução com os mesmos parâmetros
+                (ex.: o usuário desconfia que o cache está corrompido, ou
+                quer comparar resultados de execuções diferentes do
+                shift trick, que tem componente aleatório).
 
         Returns:
             Caminho absoluto para o arquivo <stem_name>.wav gerado.
@@ -161,11 +169,19 @@ class AudioSeparator:
         target_path = out_dir / f"{stem_name}.wav"
 
         # Reaproveita stems existentes (todos os stems são salvos juntos,
-        # então a existência de qualquer um indica que o cache é válido)
-        if target_path.exists():
+        # então a existência de qualquer um indica que o cache é válido),
+        # a menos que o reprocessamento tenha sido forçado explicitamente
+        if target_path.exists() and not force_reprocess:
             logger.info("Stem já existe. Reutilizando cache.")
             self._notify(progress_cb, "Reutilizando cache de stems…")
             return str(target_path.resolve())
+
+        if target_path.exists() and force_reprocess:
+            logger.info(
+                f"Cache existente em {out_dir} será ignorado "
+                f"(force_reprocess=True) — reprocessando do zero."
+            )
+            self._notify(progress_cb, "Reprocessando (cache ignorado)…")
 
         # Leitura do áudio
         self._notify(progress_cb, "Carregando áudio…")
@@ -236,9 +252,15 @@ class AudioSeparator:
         self,
         audio_path: str,
         progress_cb: Callable[[str], None] | None = None,
+        force_reprocess: bool = False,
     ) -> str:
         """Mantido por compatibilidade — equivalente a extract_stem(..., 'guitar')."""
-        return self.extract_stem(audio_path, stem_name="guitar", progress_cb=progress_cb)
+        return self.extract_stem(
+            audio_path,
+            stem_name="guitar",
+            progress_cb=progress_cb,
+            force_reprocess=force_reprocess,
+        )
 
     # Utilitários internos
 
