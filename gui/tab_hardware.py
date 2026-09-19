@@ -3,13 +3,20 @@ from __future__ import annotations
 import logging
 import traceback
 
-from PyQt6.QtWidgets import QWidget, QMessageBox
+from PyQt6.QtWidgets import QWidget, QMessageBox, QInputDialog
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from gui.ui_tab_hardware import Ui_TabHardware
 from gui.effect_widget import EffectWidget
 from core.effects_spec import EFFECT_SPECS
 from core.hardware import ESP32Link, HardwareLinkError, PedalState
+from core.presets import (
+    save_preset,
+    load_preset,
+    list_presets,
+    delete_preset,
+    PresetError,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -109,6 +116,11 @@ class TabHardware(QWidget, Ui_TabHardware):
 
         self.btn_send_hardware.clicked.connect(self.start_send_hardware)
 
+        self.btn_save_preset.clicked.connect(self._on_save_preset_clicked)
+        self.btn_load_preset.clicked.connect(self._on_load_preset_clicked)
+        self.btn_delete_preset.clicked.connect(self._on_delete_preset_clicked)
+        self._refresh_presets_combo()
+
         # Se o usuário mexer manualmente no threshold do gate, isso deixa
         # de ser "vindo do Tone Matching" — limpa a anotação de origem.
         gate_widget = self.effect_widgets.get(self.TONE_MATCHING_TARGET_KEY)
@@ -117,6 +129,95 @@ class TabHardware(QWidget, Ui_TabHardware):
 
     def _clear_gate_source_label(self) -> None:
         self.lbl_gate_source.setText("(ajustado manualmente)")
+
+    # Presets
+
+    def _refresh_presets_combo(self) -> None:
+        """Repopula o combo de presets a partir dos arquivos salvos em disco."""
+        current = self.combo_presets.currentText()
+        self.combo_presets.blockSignals(True)
+        self.combo_presets.clear()
+        self.combo_presets.addItems(list_presets())
+        # Tenta manter a seleção anterior, se ainda existir
+        index = self.combo_presets.findText(current)
+        if index >= 0:
+            self.combo_presets.setCurrentIndex(index)
+        self.combo_presets.blockSignals(False)
+
+    def _on_save_preset_clicked(self) -> None:
+        name, ok = QInputDialog.getText(
+            self,
+            "Salvar preset",
+            "Nome do preset:",
+            text=self.combo_presets.currentText(),
+        )
+        if not ok or not name.strip():
+            return
+
+        try:
+            path = save_preset(name, self.effect_widgets)
+        except PresetError as exc:
+            QMessageBox.critical(self, "Erro ao salvar preset", str(exc))
+            return
+
+        logger.info(f"Preset salvo pelo usuário: {path}")
+        self._refresh_presets_combo()
+        index = self.combo_presets.findText(name.strip())
+        if index >= 0:
+            self.combo_presets.setCurrentIndex(index)
+        self.status_message.emit(f"Preset '{name.strip()}' salvo.")
+
+    def _on_load_preset_clicked(self) -> None:
+        name = self.combo_presets.currentText()
+        if not name:
+            QMessageBox.warning(
+                self,
+                "Nenhum preset selecionado",
+                "Selecione um preset no combo antes de carregar.",
+            )
+            return
+
+        try:
+            warnings = load_preset(name, self.effect_widgets)
+        except PresetError as exc:
+            QMessageBox.critical(self, "Erro ao carregar preset", str(exc))
+            return
+
+        # Carregar um preset conta como ajuste manual do gate: a
+        # anotação "(a partir do Tone Matching)" deixa de fazer sentido
+        # até uma nova análise ser propagada.
+        self.lbl_gate_source.setText("(carregado do preset)")
+
+        if warnings:
+            QMessageBox.warning(
+                self,
+                "Preset carregado com ressalvas",
+                f"O preset '{name}' foi carregado, mas alguns itens não "
+                f"existem na versão atual e foram ignorados:\n\n"
+                + "\n".join(f"• {w}" for w in warnings),
+            )
+
+        self.status_message.emit(f"Preset '{name}' carregado.")
+
+    def _on_delete_preset_clicked(self) -> None:
+        name = self.combo_presets.currentText()
+        if not name:
+            return
+
+        confirm = QMessageBox.question(
+            self,
+            "Excluir preset",
+            f"Tem certeza que deseja excluir o preset '{name}'?\n"
+            f"Esta ação não pode ser desfeita.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if confirm != QMessageBox.StandardButton.Yes:
+            return
+
+        delete_preset(name)
+        self._refresh_presets_combo()
+        self.status_message.emit(f"Preset '{name}' excluído.")
 
     # API pública, chamada pelo main_gui.py
 

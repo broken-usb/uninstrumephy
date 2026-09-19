@@ -36,6 +36,71 @@
     </widget>
    </item>
    <item>
+    <layout class="QHBoxLayout" name="presetsLayout">
+     <item>
+      <widget class="QLabel" name="lbl_presets_title">
+       <property name="text">
+        <string>Preset:</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QComboBox" name="combo_presets">
+       <property name="minimumSize">
+        <size>
+         <width>160</width>
+         <height>0</height>
+        </size>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btn_load_preset">
+       <property name="text">
+        <string>📂 Carregar</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btn_save_preset">
+       <property name="text">
+        <string>💾 Salvar…</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <widget class="QPushButton" name="btn_delete_preset">
+       <property name="text">
+        <string>🗑 Excluir</string>
+       </property>
+      </widget>
+     </item>
+     <item>
+      <spacer name="presetsSpacer">
+       <property name="orientation">
+        <enum>Qt::Orientation::Horizontal</enum>
+       </property>
+       <property name="sizeHint" stdset="0">
+        <size>
+         <width>40</width>
+         <height>20</height>
+        </size>
+       </property>
+      </spacer>
+     </item>
+    </layout>
+   </item>
+   <item>
+    <widget class="QFrame" name="lineSepPresets">
+     <property name="frameShape">
+      <enum>QFrame::Shape::HLine</enum>
+     </property>
+     <property name="frameShadow">
+      <enum>QFrame::Shadow::Plain</enum>
+     </property>
+    </widget>
+   </item>
+   <item>
     <widget class="QLabel" name="lbl_hardware_hint">
      <property name="text">
       <string>Os controles abaixo espelham os efeitos disponíveis no firmware. O Noise Gate pode ser preenchido automaticamente a partir do Tone Matching, ou ajustado manualmente aqui.</string>
