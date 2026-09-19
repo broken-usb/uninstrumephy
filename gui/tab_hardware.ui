@@ -38,7 +38,7 @@
    <item>
     <widget class="QLabel" name="lbl_hardware_hint">
      <property name="text">
-      <string>Os controles abaixo espelham os efeitos fixos do firmware (Noise Gate, Overdrive e Delay). O Noise Gate pode ser preenchido automaticamente a partir do Tone Matching, ou ajustado manualmente aqui.</string>
+      <string>Os controles abaixo espelham os efeitos disponíveis no firmware. O Noise Gate pode ser preenchido automaticamente a partir do Tone Matching, ou ajustado manualmente aqui.</string>
      </property>
      <property name="wordWrap">
       <bool>true</bool>
@@ -48,397 +48,37 @@
      </property>
     </widget>
    </item>
-
    <item>
-    <widget class="QFrame" name="frameGate">
-     <property name="frameShape">
-      <enum>QFrame::Shape::StyledPanel</enum>
+    <widget class="QLabel" name="lbl_gate_source">
+     <property name="text">
+      <string></string>
      </property>
-     <layout class="QVBoxLayout" name="gateLayout">
-      <property name="leftMargin">
+     <property name="styleSheet">
+      <string notr="true">color: #888; font-size: 11px;</string>
+     </property>
+    </widget>
+   </item>
+   <item>
+    <widget class="QWidget" name="containerEffects" native="true">
+     <layout class="QVBoxLayout" name="effectsContainerLayout">
+      <property name="spacing">
        <number>10</number>
+      </property>
+      <property name="leftMargin">
+       <number>0</number>
       </property>
       <property name="topMargin">
-       <number>8</number>
+       <number>0</number>
       </property>
       <property name="rightMargin">
-       <number>10</number>
+       <number>0</number>
       </property>
       <property name="bottomMargin">
-       <number>8</number>
+       <number>0</number>
       </property>
-      <item>
-       <layout class="QHBoxLayout" name="gateHeaderLayout">
-        <item>
-         <widget class="QCheckBox" name="check_gate_active">
-          <property name="text">
-           <string>Noise Gate</string>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <spacer name="gateHeaderSpacer">
-          <property name="orientation">
-           <enum>Qt::Orientation::Horizontal</enum>
-          </property>
-          <property name="sizeHint" stdset="0">
-           <size>
-            <width>40</width>
-            <height>20</height>
-           </size>
-          </property>
-         </spacer>
-        </item>
-        <item>
-         <widget class="QLabel" name="lbl_gate_source">
-          <property name="text">
-           <string></string>
-          </property>
-          <property name="styleSheet">
-           <string notr="true">color: #888; font-size: 11px;</string>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item>
-       <layout class="QHBoxLayout" name="gateThresholdLayout">
-        <item>
-         <widget class="QLabel" name="lbl_gate_threshold_name">
-          <property name="text">
-           <string>Threshold:</string>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>90</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QSlider" name="slider_gate_threshold">
-          <property name="minimum">
-           <number>-80</number>
-          </property>
-          <property name="maximum">
-           <number>0</number>
-          </property>
-          <property name="value">
-           <number>-46</number>
-          </property>
-          <property name="orientation">
-           <enum>Qt::Orientation::Horizontal</enum>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="lbl_gate_threshold_value">
-          <property name="text">
-           <string>-46 dB</string>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>60</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
      </layout>
     </widget>
    </item>
-
-   <item>
-    <widget class="QFrame" name="frameOverdrive">
-     <property name="frameShape">
-      <enum>QFrame::Shape::StyledPanel</enum>
-     </property>
-     <layout class="QVBoxLayout" name="overdriveLayout">
-      <property name="leftMargin">
-       <number>10</number>
-      </property>
-      <property name="topMargin">
-       <number>8</number>
-      </property>
-      <property name="rightMargin">
-       <number>10</number>
-      </property>
-      <property name="bottomMargin">
-       <number>8</number>
-      </property>
-      <item>
-       <widget class="QCheckBox" name="check_dist_active">
-        <property name="text">
-         <string>Overdrive</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <layout class="QHBoxLayout" name="distDriveLayout">
-        <item>
-         <widget class="QLabel" name="lbl_dist_drive_name">
-          <property name="text">
-           <string>Drive:</string>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>90</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QSlider" name="slider_dist_drive">
-          <property name="minimum">
-           <number>0</number>
-          </property>
-          <property name="maximum">
-           <number>100</number>
-          </property>
-          <property name="value">
-           <number>21</number>
-          </property>
-          <property name="orientation">
-           <enum>Qt::Orientation::Horizontal</enum>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="lbl_dist_drive_value">
-          <property name="text">
-           <string>21%</string>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>60</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item>
-       <layout class="QHBoxLayout" name="distLevelLayout">
-        <item>
-         <widget class="QLabel" name="lbl_dist_level_name">
-          <property name="text">
-           <string>Level:</string>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>90</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QSlider" name="slider_dist_level">
-          <property name="minimum">
-           <number>0</number>
-          </property>
-          <property name="maximum">
-           <number>100</number>
-          </property>
-          <property name="value">
-           <number>80</number>
-          </property>
-          <property name="orientation">
-           <enum>Qt::Orientation::Horizontal</enum>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="lbl_dist_level_value">
-          <property name="text">
-           <string>80%</string>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>60</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-     </layout>
-    </widget>
-   </item>
-
-   <item>
-    <widget class="QFrame" name="frameDelay">
-     <property name="frameShape">
-      <enum>QFrame::Shape::StyledPanel</enum>
-     </property>
-     <layout class="QVBoxLayout" name="delayLayout">
-      <property name="leftMargin">
-       <number>10</number>
-      </property>
-      <property name="topMargin">
-       <number>8</number>
-      </property>
-      <property name="rightMargin">
-       <number>10</number>
-      </property>
-      <property name="bottomMargin">
-       <number>8</number>
-      </property>
-      <item>
-       <widget class="QCheckBox" name="check_delay_active">
-        <property name="text">
-         <string>Delay</string>
-        </property>
-       </widget>
-      </item>
-      <item>
-       <layout class="QHBoxLayout" name="delayTimeLayout">
-        <item>
-         <widget class="QLabel" name="lbl_delay_time_name">
-          <property name="text">
-           <string>Time:</string>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>90</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QSlider" name="slider_delay_time">
-          <property name="minimum">
-           <number>20</number>
-          </property>
-          <property name="maximum">
-           <number>1200</number>
-          </property>
-          <property name="value">
-           <number>340</number>
-          </property>
-          <property name="orientation">
-           <enum>Qt::Orientation::Horizontal</enum>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="lbl_delay_time_value">
-          <property name="text">
-           <string>340 ms</string>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>60</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item>
-       <layout class="QHBoxLayout" name="delayFeedbackLayout">
-        <item>
-         <widget class="QLabel" name="lbl_delay_feedback_name">
-          <property name="text">
-           <string>Feedback:</string>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>90</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QSlider" name="slider_delay_feedback">
-          <property name="minimum">
-           <number>0</number>
-          </property>
-          <property name="maximum">
-           <number>100</number>
-          </property>
-          <property name="value">
-           <number>42</number>
-          </property>
-          <property name="orientation">
-           <enum>Qt::Orientation::Horizontal</enum>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="lbl_delay_feedback_value">
-          <property name="text">
-           <string>42%</string>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>60</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-      <item>
-       <layout class="QHBoxLayout" name="delayMixLayout">
-        <item>
-         <widget class="QLabel" name="lbl_delay_mix_name">
-          <property name="text">
-           <string>Mix:</string>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>90</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QSlider" name="slider_delay_mix">
-          <property name="minimum">
-           <number>0</number>
-          </property>
-          <property name="maximum">
-           <number>100</number>
-          </property>
-          <property name="value">
-           <number>30</number>
-          </property>
-          <property name="orientation">
-           <enum>Qt::Orientation::Horizontal</enum>
-          </property>
-         </widget>
-        </item>
-        <item>
-         <widget class="QLabel" name="lbl_delay_mix_value">
-          <property name="text">
-           <string>30%</string>
-          </property>
-          <property name="minimumSize">
-           <size>
-            <width>60</width>
-            <height>0</height>
-           </size>
-          </property>
-         </widget>
-        </item>
-       </layout>
-      </item>
-     </layout>
-    </widget>
-   </item>
-
    <item>
     <widget class="QFrame" name="lineSepHardwareBottom">
      <property name="frameShape">

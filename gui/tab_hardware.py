@@ -7,6 +7,8 @@ from PyQt6.QtWidgets import QWidget, QMessageBox
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from gui.ui_tab_hardware import Ui_TabHardware
+from gui.effect_widget import EffectWidget
+from core.effects_spec import EFFECT_SPECS
 from core.hardware import ESP32Link, HardwareLinkError, PedalState
 
 logger = logging.getLogger(__name__)
@@ -55,14 +57,18 @@ class HardwareWorker(QThread):
 
 class TabHardware(QWidget, Ui_TabHardware):
     """
-    Aba de comunicação com a ESP32-S3: controles diretos para os três
-    efeitos fixos implementados no firmware atual (Noise Gate, Overdrive
-    e Delay), com envio do estado completo via protocolo binário
-    COBS/PedalState (ver core/hardware.py).
+    Aba de comunicação com a ESP32-S3: renderiza um EffectWidget por
+    efeito definido em core/effects_spec.py (EFFECT_SPECS), monta um
+    PedalState a partir do estado atual desses widgets, e o envia via
+    protocolo binário COBS (ver core/hardware.py).
 
-    O firmware não expõe mais um comando de descoberta de filtros — os
-    efeitos disponíveis são fixos no código da placa de UI (Board B), e
-    esta aba espelha exatamente esses três efeitos e seus parâmetros.
+    Arquitetura modular: nem esta classe, nem o .ui, precisam ser
+    alterados para adicionar um novo efeito — desde que o campo
+    correspondente já exista em PedalState.h (arquivo compartilhado com
+    o firmware), basta acrescentar uma nova EffectSpec em
+    core/effects_spec.py e o widget correspondente aparece
+    automaticamente nesta aba, já lido corretamente por
+    _build_pedal_state() e set_params().
 
     O threshold do Noise Gate pode ser preenchido automaticamente a
     partir do resultado do Tone Matching (ver set_params), ou ajustado
@@ -79,47 +85,38 @@ class TabHardware(QWidget, Ui_TabHardware):
     send_error    = pyqtSignal(str)
     status_message = pyqtSignal(str)
 
+    # Efeito cujo primeiro parâmetro é preenchido automaticamente a
+    # partir do Tone Matching (ver set_params). Os demais efeitos são
+    # controlados manualmente pelo usuário nesta aba.
+    TONE_MATCHING_TARGET_KEY = "gate"
+    TONE_MATCHING_TARGET_PARAM = "gate_threshold"
+    TONE_MATCHING_SOURCE_FIELD = "noise_gate_threshold_db"
+
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setupUi(self)
 
         self.hardware_thread: HardwareWorker | None = None
 
-        self.btn_send_hardware.clicked.connect(self.start_send_hardware)
+        # Constrói dinamicamente um EffectWidget por EffectSpec — este é
+        # o ponto que torna a aba modular: adicionar/remover efeitos em
+        # EFFECT_SPECS muda o que aparece aqui, sem tocar nesta classe.
+        self.effect_widgets: dict[str, EffectWidget] = {}
+        for spec in EFFECT_SPECS:
+            widget = EffectWidget(spec)
+            self.effectsContainerLayout.addWidget(widget)
+            self.effect_widgets[spec.key] = widget
 
-        # Sincroniza os labels de valor com os sliders
-        self.slider_gate_threshold.valueChanged.connect(self._update_gate_label)
-        self.slider_dist_drive.valueChanged.connect(self._update_dist_drive_label)
-        self.slider_dist_level.valueChanged.connect(self._update_dist_level_label)
-        self.slider_delay_time.valueChanged.connect(self._update_delay_time_label)
-        self.slider_delay_feedback.valueChanged.connect(self._update_delay_feedback_label)
-        self.slider_delay_mix.valueChanged.connect(self._update_delay_mix_label)
+        self.btn_send_hardware.clicked.connect(self.start_send_hardware)
 
         # Se o usuário mexer manualmente no threshold do gate, isso deixa
         # de ser "vindo do Tone Matching" — limpa a anotação de origem.
-        self.slider_gate_threshold.valueChanged.connect(
-            lambda _: self.lbl_gate_source.setText("(ajustado manualmente)")
-        )
+        gate_widget = self.effect_widgets.get(self.TONE_MATCHING_TARGET_KEY)
+        if gate_widget is not None:
+            gate_widget.changed.connect(self._clear_gate_source_label)
 
-    # Sincronização de labels
-
-    def _update_gate_label(self, value: int) -> None:
-        self.lbl_gate_threshold_value.setText(f"{value} dB")
-
-    def _update_dist_drive_label(self, value: int) -> None:
-        self.lbl_dist_drive_value.setText(f"{value}%")
-
-    def _update_dist_level_label(self, value: int) -> None:
-        self.lbl_dist_level_value.setText(f"{value}%")
-
-    def _update_delay_time_label(self, value: int) -> None:
-        self.lbl_delay_time_value.setText(f"{value} ms")
-
-    def _update_delay_feedback_label(self, value: int) -> None:
-        self.lbl_delay_feedback_value.setText(f"{value}%")
-
-    def _update_delay_mix_label(self, value: int) -> None:
-        self.lbl_delay_mix_value.setText(f"{value}%")
+    def _clear_gate_source_label(self) -> None:
+        self.lbl_gate_source.setText("(ajustado manualmente)")
 
     # API pública, chamada pelo main_gui.py
 
@@ -139,14 +136,14 @@ class TabHardware(QWidget, Ui_TabHardware):
         if not params:
             return
 
-        gate_db = params.get("noise_gate_threshold_db")
-        if gate_db is not None:
-            clamped = max(
-                self.slider_gate_threshold.minimum(),
-                min(self.slider_gate_threshold.maximum(), round(gate_db)),
+        gate_db = params.get(self.TONE_MATCHING_SOURCE_FIELD)
+        gate_widget = self.effect_widgets.get(self.TONE_MATCHING_TARGET_KEY)
+
+        if gate_db is not None and gate_widget is not None:
+            gate_widget.set_param_value(
+                self.TONE_MATCHING_TARGET_PARAM, round(gate_db)
             )
-            self.slider_gate_threshold.setValue(clamped)
-            self.check_gate_active.setChecked(True)
+            gate_widget.set_active(True)
             self.lbl_gate_source.setText("(a partir do Tone Matching)")
 
     def reset(self) -> None:
@@ -154,18 +151,15 @@ class TabHardware(QWidget, Ui_TabHardware):
         self.lbl_gate_source.setText("")
 
     def _build_pedal_state(self) -> PedalState:
-        """Monta um PedalState a partir do estado atual dos controles da aba."""
-        return PedalState(
-            gate_active=self.check_gate_active.isChecked(),
-            gate_threshold=float(self.slider_gate_threshold.value()),
-            dist_active=self.check_dist_active.isChecked(),
-            dist_drive=1.0 + (self.slider_dist_drive.value() / 100.0) * 19.0,
-            dist_level=self.slider_dist_level.value() / 100.0,
-            delay_active=self.check_delay_active.isChecked(),
-            delay_time_samples=int((self.slider_delay_time.value() * 44100) / 1000),
-            delay_feedback=(self.slider_delay_feedback.value() / 100.0) * 0.95,
-            delay_mix=self.slider_delay_mix.value() / 100.0,
-        )
+        """
+        Monta um PedalState a partir do estado atual de todos os
+        EffectWidgets, coletando os campos via to_struct_fields() de
+        cada um e combinando-os em um único dicionário de kwargs.
+        """
+        fields: dict = {}
+        for widget in self.effect_widgets.values():
+            fields.update(widget.to_struct_fields())
+        return PedalState(**fields)
 
     # Envio de parâmetros
 
