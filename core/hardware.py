@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import json
 import logging
+import struct
 import time
 from typing import Callable
 
@@ -14,56 +14,198 @@ logger = logging.getLogger(__name__)
 # Útil para desenvolver e demonstrar o software antes da placa chegar.
 MOCK_PORT = "MOCK"
 
+# Byte delimitador de fim de pacote no protocolo COBS. O COBS garante que
+# este valor nunca aparece no meio dos dados codificados, então ele pode
+# ser usado com segurança para marcar onde um pacote termina.
+PACKET_DELIMITER = 0x00
+
 
 class HardwareLinkError(Exception):
     """Erro genérico de comunicação com a placa ESP32-S3."""
 
 
+def cobs_encode(data: bytes) -> bytes:
+    """
+    Codifica `data` em COBS (Consistent Overhead Byte Stuffing), removendo
+    todos os bytes 0x00 do payload e substituindo-os por marcadores de
+    comprimento. Réplica em Python do `cobs_encode()` usado no firmware
+    (Board B / UI), garantindo compatibilidade byte a byte.
+
+    O resultado NUNCA contém 0x00 internamente — o chamador deve anexar
+    um único 0x00 ao final para marcar o fim do pacote na UART.
+    """
+    output = bytearray()
+    code_index = 0
+    output.append(0)  # placeholder do primeiro code, preenchido no final do bloco
+    code = 1
+
+    for byte in data:
+        if byte == 0:
+            output[code_index] = code
+            code = 1
+            code_index = len(output)
+            output.append(0)
+        else:
+            output.append(byte)
+            code += 1
+            if code == 0xFF:
+                output[code_index] = code
+                code = 1
+                code_index = len(output)
+                output.append(0)
+
+    output[code_index] = code
+    return bytes(output)
+
+
+def cobs_decode(data: bytes) -> bytes:
+    """
+    Decodifica um bloco COBS de volta aos bytes originais. Réplica em
+    Python do `cobs_decode()` usado no firmware (Board A / DSP Master).
+
+    Retorna b"" se o bloco estiver malformado (mesmo comportamento do
+    `return 0` no código C original).
+    """
+    output = bytearray()
+    read_index = 0
+    length = len(data)
+
+    while read_index < length:
+        code = data[read_index]
+        if read_index + code > length and code != 1:
+            return b""
+        read_index += 1
+        for _ in range(1, code):
+            output.append(data[read_index])
+            read_index += 1
+        if code != 0xFF and read_index != length:
+            output.append(0)
+
+    return bytes(output)
+
+
+class PedalState:
+    """
+    Espelha em Python a struct C `PedalState` (arquivo PedalState.h,
+    compartilhado entre as duas placas ESP32-S3 do pedal). A struct é
+    `__attribute__((packed))`, ou seja, sem padding entre os campos —
+    o formato abaixo replica exatamente essa disposição de memória.
+
+    Layout (little-endian, 27 bytes total):
+        uint8_t  gate_active            (offset  0, 1 byte)
+        float    gate_threshold         (offset  1, 4 bytes)
+        uint8_t  dist_active            (offset  5, 1 byte)
+        float    dist_drive             (offset  6, 4 bytes)
+        float    dist_level             (offset 10, 4 bytes)
+        uint8_t  delay_active           (offset 14, 1 byte)
+        uint32_t delay_time_samples     (offset 15, 4 bytes)
+        float    delay_feedback         (offset 19, 4 bytes)
+        float    delay_mix              (offset 23, 4 bytes)
+
+    IMPORTANTE: esta struct não possui campos de equalização (bass/mid/
+    treble) — o firmware atual só implementa Noise Gate, Overdrive e
+    Delay. Um "Equalizador" aparece comentado no código da UI (Board B)
+    como efeito futuro ainda não habilitado. Os parâmetros de EQ
+    calculados pelo Tone Matching não têm, por ora, um destino no
+    protocolo — isso precisa ser resolvido com o time de firmware antes
+    de o EQ poder ser efetivamente aplicado no pedal.
+    """
+
+    STRUCT_FORMAT = "<BfBffBIff"
+    SIZE = struct.calcsize(STRUCT_FORMAT)  # 27 bytes
+
+    def __init__(
+        self,
+        gate_active: bool = False,
+        gate_threshold: float = 0.0,
+        dist_active: bool = False,
+        dist_drive: float = 1.0,
+        dist_level: float = 1.0,
+        delay_active: bool = False,
+        delay_time_samples: int = 0,
+        delay_feedback: float = 0.0,
+        delay_mix: float = 0.0,
+    ) -> None:
+        self.gate_active = gate_active
+        self.gate_threshold = gate_threshold
+        self.dist_active = dist_active
+        self.dist_drive = dist_drive
+        self.dist_level = dist_level
+        self.delay_active = delay_active
+        self.delay_time_samples = delay_time_samples
+        self.delay_feedback = delay_feedback
+        self.delay_mix = delay_mix
+
+    def pack(self) -> bytes:
+        """Serializa para os 27 bytes binários exatos esperados pelo firmware."""
+        return struct.pack(
+            self.STRUCT_FORMAT,
+            int(self.gate_active),
+            float(self.gate_threshold),
+            int(self.dist_active),
+            float(self.dist_drive),
+            float(self.dist_level),
+            int(self.delay_active),
+            int(self.delay_time_samples),
+            float(self.delay_feedback),
+            float(self.delay_mix),
+        )
+
+    @classmethod
+    def unpack(cls, data: bytes) -> "PedalState":
+        """Desserializa 27 bytes binários de volta para um PedalState."""
+        if len(data) != cls.SIZE:
+            raise ValueError(
+                f"Tamanho inválido para PedalState: recebido {len(data)} "
+                f"bytes, esperado {cls.SIZE}."
+            )
+        fields = struct.unpack(cls.STRUCT_FORMAT, data)
+        return cls(
+            gate_active=bool(fields[0]),
+            gate_threshold=fields[1],
+            dist_active=bool(fields[2]),
+            dist_drive=fields[3],
+            dist_level=fields[4],
+            delay_active=bool(fields[5]),
+            delay_time_samples=fields[6],
+            delay_feedback=fields[7],
+            delay_mix=fields[8],
+        )
+
+    def __repr__(self) -> str:
+        return (
+            f"PedalState(gate_active={self.gate_active}, "
+            f"gate_threshold={self.gate_threshold}, "
+            f"dist_active={self.dist_active}, "
+            f"dist_drive={self.dist_drive}, dist_level={self.dist_level}, "
+            f"delay_active={self.delay_active}, "
+            f"delay_time_samples={self.delay_time_samples}, "
+            f"delay_feedback={self.delay_feedback}, "
+            f"delay_mix={self.delay_mix})"
+        )
+
+
 class ESP32Link:
     """
-    Envia os parâmetros de tone-matching calculados pelo AudioAnalyzer
-    para uma ESP32-S3 conectada via USB (porta serial), usando um
-    protocolo simples de uma linha JSON por mensagem.
+    Envia um PedalState para a ESP32-S3 conectada via USB (porta serial),
+    usando o protocolo real implementado pelo firmware: a struct é
+    serializada em binário (27 bytes, ver PedalState), codificada em
+    COBS e terminada por um byte 0x00 que marca o fim do pacote na UART.
 
-    Formato enviado para tone-matching (terminado em '\\n'):
-        {"noise_gate_threshold_db": -42.5, "eq": {"bass": 4.1, "mid": 3.2, "treble": 2.7}}
-
-    Formato do protocolo de descoberta de filtros (comando/resposta):
-        Software → ESP32:  {"cmd": "list_filters"}
-        ESP32 → Software:  {"filters": [
-            {"id": "low_shelf", "name": "Low Shelf", "params": ["freq_hz", "gain_db"]},
-            {"id": "peaking",   "name": "Peaking",   "params": ["freq_hz", "gain_db", "q"]},
-            ...
-        ]}
-
-    Este protocolo de descoberta é provisório — o formato exato dos
-    filtros (campos, nomes) deve ser acordado com o firmware assim que
-    ele estiver disponível para testes reais. Por ora, o software só
-    define o contrato mínimo: uma lista de filtros, cada um com id,
-    nome de exibição e a lista de parâmetros que aceita.
+    Este protocolo substitui a versão anterior baseada em JSON — o
+    firmware real (Board A: DSP Master / Board B: UI) não fala JSON, e
+    não expõe um comando de descoberta de filtros: os efeitos disponíveis
+    (Noise Gate, Overdrive, Delay) são fixos no firmware.
 
     Modo simulado:
         Use port=MOCK_PORT (ou port="MOCK") para simular o envio sem
         precisar de hardware físico conectado. Nesse modo, nada é
-        escrito de fato em uma porta serial — o payload é apenas
-        logado, o que permite testar todo o fluxo da GUI sem a placa.
-        No caso da descoberta de filtros, uma lista de filtros de
-        exemplo é devolvida, para permitir testar a UI de seleção
-        sem depender do firmware real.
+        escrito de fato em uma porta serial — o pacote COBS resultante é
+        apenas logado, o que permite testar o fluxo da GUI sem a placa.
     """
 
     BAUDRATE: int = 115_200
     TIMEOUT_S: float = 2.0
-
-    # Filtros de exemplo devolvidos em modo MOCK, só para permitir testar
-    # a UI de seleção de filtros sem hardware/firmware real disponível.
-    # Deve ser substituído pela lista real assim que o firmware existir.
-    MOCK_FILTERS: list[dict] = [
-        {"id": "low_shelf",  "name": "Low Shelf (Graves)",  "params": ["freq_hz", "gain_db"]},
-        {"id": "peaking",    "name": "Peaking (Médios)",    "params": ["freq_hz", "gain_db", "q"]},
-        {"id": "high_shelf", "name": "High Shelf (Agudos)", "params": ["freq_hz", "gain_db"]},
-        {"id": "noise_gate", "name": "Noise Gate",          "params": ["threshold_db"]},
-    ]
 
     # Tempo de espera após abrir a porta: a maioria das placas baseadas em
     # ESP32 reinicia ao abrir a conexão serial (DTR/RTS), então é preciso
@@ -124,34 +266,34 @@ class ESP32Link:
         except serial.SerialException as exc:
             raise HardwareLinkError(f"Falha ao abrir {self.port}: {exc}") from exc
 
-    def send_params(
+    def send_state(
         self,
-        params: dict,
+        state: PedalState,
         progress_cb: Callable[[str], None] | None = None,
     ) -> None:
         """
-        Envia os parâmetros de tone-matching como uma linha JSON.
+        Envia um PedalState completo para o pedal: serializa a struct em
+        27 bytes binários, codifica em COBS, e transmite seguido do byte
+        delimitador 0x00.
 
         Args:
-            params: Dicionário retornado por AudioAnalyzer.analyze_stem()
-                    (ex.: {"noise_gate_threshold_db": ..., "eq": {...}}).
+            state: PedalState com os parâmetros atuais de gate/distortion/delay.
             progress_cb: Callback opcional de progresso, para conectar a
                     um pyqtSignal da UI.
 
         Raises:
             HardwareLinkError: Se a conexão ou o envio falharem.
         """
-        # Envia apenas os campos relevantes para o firmware, evitando
-        # vazar metadados internos (ex.: is_silent) sem necessidade
-        payload = {
-            "noise_gate_threshold_db": params.get("noise_gate_threshold_db"),
-            "eq": params.get("eq", {}),
-        }
+        raw = state.pack()
+        packet = cobs_encode(raw) + bytes([PACKET_DELIMITER])
 
         if self.is_mock:
             self._notify(progress_cb, "[Simulado] Conectando…")
-            self._notify(progress_cb, f"[Simulado] Enviando: {payload}")
-            logger.info(f"[MOCK] Payload que seria enviado: {payload}")
+            self._notify(progress_cb, f"[Simulado] Enviando: {state!r}")
+            logger.info(
+                f"[MOCK] PedalState que seria enviado: {state!r} "
+                f"({len(raw)} bytes crus, {len(packet)} bytes no pacote COBS)"
+            )
             self._notify(progress_cb, "[Simulado] Envio concluído (nenhum hardware real envolvido).")
             return
 
@@ -159,13 +301,11 @@ class ESP32Link:
             self._notify(progress_cb, f"Conectando à porta {self.port}…")
             self.connect()
 
-        line = (json.dumps(payload) + "\n").encode("utf-8")
-
         try:
             self._notify(progress_cb, "Enviando parâmetros…")
-            self._conn.write(line)
+            self._conn.write(packet)
             self._conn.flush()
-            logger.info(f"Parâmetros enviados: {payload}")
+            logger.info(f"PedalState enviado: {state!r} ({len(packet)} bytes no pacote)")
             self._notify(progress_cb, "Envio concluído.")
         except serial.SerialTimeoutException as exc:
             raise HardwareLinkError(
@@ -179,76 +319,6 @@ class ESP32Link:
         if self._conn is not None and self._conn.is_open:
             self._conn.close()
             logger.info("Conexão serial encerrada.")
-
-    def list_filters(
-        self,
-        progress_cb: Callable[[str], None] | None = None,
-    ) -> list[dict]:
-        """
-        Pergunta à ESP32-S3 quais filtros ela conhece, enviando o comando
-        {"cmd": "list_filters"} e aguardando uma linha JSON de resposta
-        no formato {"filters": [...]}.
-
-        Em modo MOCK (sem placa conectada), devolve MOCK_FILTERS — uma
-        lista de exemplo — para permitir testar a UI de seleção sem
-        depender do firmware real.
-
-        Returns:
-            Lista de filtros, cada um como
-            {"id": str, "name": str, "params": [str, ...]}.
-
-        Raises:
-            HardwareLinkError: Se a conexão, o envio, ou a leitura da
-                resposta falharem (incluindo timeout ou resposta
-                malformada).
-        """
-        if self.is_mock:
-            self._notify(progress_cb, "[Simulado] Consultando filtros conhecidos…")
-            logger.info(f"[MOCK] Devolvendo filtros de exemplo: {self.MOCK_FILTERS}")
-            self._notify(progress_cb, f"[Simulado] {len(self.MOCK_FILTERS)} filtro(s) recebido(s).")
-            return list(self.MOCK_FILTERS)
-
-        if self._conn is None or not self._conn.is_open:
-            self._notify(progress_cb, f"Conectando à porta {self.port}…")
-            self.connect()
-
-        request = (json.dumps({"cmd": "list_filters"}) + "\n").encode("utf-8")
-
-        try:
-            self._notify(progress_cb, "Consultando filtros conhecidos pelo pedal…")
-            self._conn.write(request)
-            self._conn.flush()
-
-            raw_line = self._conn.readline()
-        except serial.SerialTimeoutException as exc:
-            raise HardwareLinkError(
-                f"Timeout ao consultar filtros em {self.port}: a placa não "
-                f"respondeu a tempo. Detalhe: {exc}"
-            ) from exc
-        except serial.SerialException as exc:
-            raise HardwareLinkError(f"Falha ao consultar filtros: {exc}") from exc
-
-        if not raw_line:
-            raise HardwareLinkError(
-                f"A placa em {self.port} não respondeu ao comando "
-                f"'list_filters' dentro do timeout ({self.TIMEOUT_S}s)."
-            )
-
-        try:
-            response = json.loads(raw_line.decode("utf-8").strip())
-            filters = response["filters"]
-            if not isinstance(filters, list):
-                raise TypeError("campo 'filters' não é uma lista")
-        except (json.JSONDecodeError, KeyError, TypeError, UnicodeDecodeError) as exc:
-            raise HardwareLinkError(
-                f"Resposta malformada da placa ao consultar filtros: "
-                f"{raw_line!r} ({exc})"
-            ) from exc
-
-        logger.info(f"Filtros recebidos da ESP32-S3: {filters}")
-        self._notify(progress_cb, f"{len(filters)} filtro(s) recebido(s).")
-
-        return filters
 
     @staticmethod
     def _notify(cb: Callable[[str], None] | None, msg: str) -> None:

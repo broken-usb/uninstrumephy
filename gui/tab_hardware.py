@@ -3,30 +3,30 @@ from __future__ import annotations
 import logging
 import traceback
 
-from PyQt6.QtWidgets import QWidget, QMessageBox, QListWidgetItem, QSystemTrayIcon
-from PyQt6.QtCore import QThread, pyqtSignal, Qt
+from PyQt6.QtWidgets import QWidget, QMessageBox
+from PyQt6.QtCore import QThread, pyqtSignal
 
 from gui.ui_tab_hardware import Ui_TabHardware
-from core.hardware import ESP32Link, HardwareLinkError
+from core.hardware import ESP32Link, HardwareLinkError, PedalState
 
 logger = logging.getLogger(__name__)
 
 
 class HardwareWorker(QThread):
-    """Envia os parâmetros de Tone Matching para a ESP32-S3 em uma thread separada."""
+    """Envia um PedalState completo para a ESP32-S3 em uma thread separada."""
 
     finished = pyqtSignal(bool)   # True se foi enviado em modo simulado (MOCK)
     error    = pyqtSignal(str)
     status   = pyqtSignal(str)
 
-    def __init__(self, params: dict, port: str | None = None) -> None:
+    def __init__(self, state: PedalState, port: str | None = None) -> None:
         super().__init__()
-        self.params = params
+        self.state = state
         self.port = port
 
     def run(self) -> None:
         try:
-            logger.info("Iniciando envio para a ESP32-S3.")
+            logger.info(f"Iniciando envio para a ESP32-S3: {self.state!r}")
 
             link = ESP32Link(port=self.port)
             was_mock = link.is_mock
@@ -38,7 +38,7 @@ class HardwareWorker(QThread):
             else:
                 self.status.emit(f"Conectando à porta {link.port}…")
 
-            link.send_params(self.params, progress_cb=self.status.emit)
+            link.send_state(self.state, progress_cb=self.status.emit)
             link.close()
 
             logger.info("Envio para a ESP32-S3 concluído.")
@@ -53,51 +53,21 @@ class HardwareWorker(QThread):
             self.error.emit(traceback.format_exc())
 
 
-class FilterQueryWorker(QThread):
-    """Consulta a ESP32-S3 para descobrir quais filtros ela conhece."""
-
-    finished = pyqtSignal(list, bool)   # (filtros, was_mock)
-    error    = pyqtSignal(str)
-    status   = pyqtSignal(str)
-
-    def __init__(self, port: str | None = None) -> None:
-        super().__init__()
-        self.port = port
-
-    def run(self) -> None:
-        try:
-            logger.info("Consultando filtros disponíveis na ESP32-S3.")
-
-            link = ESP32Link(port=self.port)
-            was_mock = link.is_mock
-
-            if was_mock:
-                self.status.emit(
-                    "Nenhuma placa detectada — usando filtros de exemplo (modo MOCK)…"
-                )
-            else:
-                self.status.emit(f"Conectando à porta {link.port}…")
-
-            filters = link.list_filters(progress_cb=self.status.emit)
-            link.close()
-
-            logger.info(f"Consulta de filtros concluída: {len(filters)} filtro(s).")
-            self.finished.emit(filters, was_mock)
-
-        except HardwareLinkError as exc:
-            logger.exception("Erro de comunicação ao consultar filtros na ESP32-S3.")
-            self.error.emit(str(exc))
-
-        except Exception:
-            logger.exception("Erro inesperado durante a consulta de filtros.")
-            self.error.emit(traceback.format_exc())
-
-
 class TabHardware(QWidget, Ui_TabHardware):
     """
-    Aba de comunicação com a ESP32-S3: envio dos parâmetros de Tone
-    Matching calculados e consulta/seleção dos filtros conhecidos pelo
-    pedal.
+    Aba de comunicação com a ESP32-S3: controles diretos para os três
+    efeitos fixos implementados no firmware atual (Noise Gate, Overdrive
+    e Delay), com envio do estado completo via protocolo binário
+    COBS/PedalState (ver core/hardware.py).
+
+    O firmware não expõe mais um comando de descoberta de filtros — os
+    efeitos disponíveis são fixos no código da placa de UI (Board B), e
+    esta aba espelha exatamente esses três efeitos e seus parâmetros.
+
+    O threshold do Noise Gate pode ser preenchido automaticamente a
+    partir do resultado do Tone Matching (ver set_params), ou ajustado
+    manualmente pelo usuário — o valor manual sempre prevalece até a
+    próxima análise ser propagada.
 
     Sinais emitidos para o main_gui.py orquestrar o restante da aplicação:
         send_started() / send_finished(bool) / send_error(str)
@@ -113,53 +83,102 @@ class TabHardware(QWidget, Ui_TabHardware):
         super().__init__(parent)
         self.setupUi(self)
 
-        self.last_params: dict = {}
         self.hardware_thread: HardwareWorker | None = None
-        self.filter_query_thread: FilterQueryWorker | None = None
-        self._known_filters: dict = {}
 
         self.btn_send_hardware.clicked.connect(self.start_send_hardware)
-        self.btn_query_filters.clicked.connect(self.start_query_filters)
-        self.btn_apply_filters.clicked.connect(self.apply_selected_filters)
-        self.list_filters.itemSelectionChanged.connect(
-            self._on_filter_selection_changed
+
+        # Sincroniza os labels de valor com os sliders
+        self.slider_gate_threshold.valueChanged.connect(self._update_gate_label)
+        self.slider_dist_drive.valueChanged.connect(self._update_dist_drive_label)
+        self.slider_dist_level.valueChanged.connect(self._update_dist_level_label)
+        self.slider_delay_time.valueChanged.connect(self._update_delay_time_label)
+        self.slider_delay_feedback.valueChanged.connect(self._update_delay_feedback_label)
+        self.slider_delay_mix.valueChanged.connect(self._update_delay_mix_label)
+
+        # Se o usuário mexer manualmente no threshold do gate, isso deixa
+        # de ser "vindo do Tone Matching" — limpa a anotação de origem.
+        self.slider_gate_threshold.valueChanged.connect(
+            lambda _: self.lbl_gate_source.setText("(ajustado manualmente)")
         )
+
+    # Sincronização de labels
+
+    def _update_gate_label(self, value: int) -> None:
+        self.lbl_gate_threshold_value.setText(f"{value} dB")
+
+    def _update_dist_drive_label(self, value: int) -> None:
+        self.lbl_dist_drive_value.setText(f"{value}%")
+
+    def _update_dist_level_label(self, value: int) -> None:
+        self.lbl_dist_level_value.setText(f"{value}%")
+
+    def _update_delay_time_label(self, value: int) -> None:
+        self.lbl_delay_time_value.setText(f"{value} ms")
+
+    def _update_delay_feedback_label(self, value: int) -> None:
+        self.lbl_delay_feedback_value.setText(f"{value}%")
+
+    def _update_delay_mix_label(self, value: int) -> None:
+        self.lbl_delay_mix_value.setText(f"{value}%")
 
     # API pública, chamada pelo main_gui.py
 
     def set_params(self, params: dict) -> None:
         """
-        Define os últimos parâmetros de Tone Matching calculados,
-        habilitando o botão de envio. Chamado pelo main_gui.py sempre
-        que a aba de Tone Matching termina uma análise (ou invalida os
-        resultados ao trocar de stem).
+        Preenche o threshold do Noise Gate a partir do resultado do Tone
+        Matching. Chamado pelo main_gui.py sempre que a aba de Tone
+        Matching termina uma análise (ou invalida os resultados ao
+        trocar de stem, casos em que params vem vazio e nada é alterado
+        aqui além da anotação de origem).
+
+        Nota: a struct PedalState do firmware atual não possui campos de
+        equalização (bass/mid/treble) — apenas o threshold do Noise Gate
+        é aproveitado do Tone Matching. Os valores de EQ calculados não
+        têm, por ora, para onde ir no protocolo.
         """
-        self.last_params = params
-        self.btn_send_hardware.setEnabled(bool(params))
+        if not params:
+            return
+
+        gate_db = params.get("noise_gate_threshold_db")
+        if gate_db is not None:
+            clamped = max(
+                self.slider_gate_threshold.minimum(),
+                min(self.slider_gate_threshold.maximum(), round(gate_db)),
+            )
+            self.slider_gate_threshold.setValue(clamped)
+            self.check_gate_active.setChecked(True)
+            self.lbl_gate_source.setText("(a partir do Tone Matching)")
 
     def reset(self) -> None:
         """Reseta o estado da aba (ex.: ao carregar um novo arquivo)."""
-        self.last_params = {}
-        self.btn_send_hardware.setEnabled(False)
+        self.lbl_gate_source.setText("")
+
+    def _build_pedal_state(self) -> PedalState:
+        """Monta um PedalState a partir do estado atual dos controles da aba."""
+        return PedalState(
+            gate_active=self.check_gate_active.isChecked(),
+            gate_threshold=float(self.slider_gate_threshold.value()),
+            dist_active=self.check_dist_active.isChecked(),
+            dist_drive=1.0 + (self.slider_dist_drive.value() / 100.0) * 19.0,
+            dist_level=self.slider_dist_level.value() / 100.0,
+            delay_active=self.check_delay_active.isChecked(),
+            delay_time_samples=int((self.slider_delay_time.value() * 44100) / 1000),
+            delay_feedback=(self.slider_delay_feedback.value() / 100.0) * 0.95,
+            delay_mix=self.slider_delay_mix.value() / 100.0,
+        )
 
     # Envio de parâmetros
 
     def start_send_hardware(self) -> None:
-        if not self.last_params:
-            QMessageBox.warning(
-                self,
-                "Nenhum parâmetro calculado",
-                "Execute a análise antes de enviar os dados para o pedal.",
-            )
-            return
+        state = self._build_pedal_state()
 
-        logger.info("Iniciando envio para a ESP32-S3.")
+        logger.info(f"Iniciando envio para a ESP32-S3: {state!r}")
         self.btn_send_hardware.setEnabled(False)
         self.send_started.emit()
 
         # port=None → tenta autodetectar a placa; cai em modo simulado
         # (MOCK) automaticamente se nenhuma porta compatível for encontrada.
-        self.hardware_thread = HardwareWorker(self.last_params, port=None)
+        self.hardware_thread = HardwareWorker(state, port=None)
         self.hardware_thread.status.connect(self.status_message.emit)
         self.hardware_thread.finished.connect(self._on_send_finished)
         self.hardware_thread.error.connect(self._on_send_error)
@@ -167,15 +186,15 @@ class TabHardware(QWidget, Ui_TabHardware):
 
     def _on_send_finished(self, was_mock: bool) -> None:
         logger.info("Workflow de envio para hardware finalizado.")
-        self.btn_send_hardware.setEnabled(bool(self.last_params))
+        self.btn_send_hardware.setEnabled(True)
 
         if was_mock:
             QMessageBox.information(
                 self,
                 "Envio simulado (sem hardware)",
                 "Nenhuma ESP32-S3 foi detectada na porta USB.\n\n"
-                "Os parâmetros NÃO foram enviados para uma placa real — "
-                "apenas simulados (modo MOCK), para fins de teste.\n\n"
+                "O estado NÃO foi enviado para uma placa real — "
+                "apenas simulado (modo MOCK), para fins de teste.\n\n"
                 "Conecte a placa via USB e tente novamente quando ela "
                 "estiver disponível."
             )
@@ -184,106 +203,16 @@ class TabHardware(QWidget, Ui_TabHardware):
 
     def _on_send_error(self, err_msg: str) -> None:
         logger.error(f"Erro ao enviar para a ESP32-S3:\n{err_msg}")
-        self.btn_send_hardware.setEnabled(bool(self.last_params))
+        self.btn_send_hardware.setEnabled(True)
 
         QMessageBox.critical(
             self,
             "Erro de comunicação",
-            f"Não foi possível enviar os parâmetros para a ESP32-S3:\n\n"
+            f"Não foi possível enviar o estado para a ESP32-S3:\n\n"
             f"{self._friendly_error_summary(err_msg)}\n\n"
             f"Detalhes completos foram registrados no terminal/log.",
         )
         self.send_error.emit(err_msg)
-
-    # Seleção de filtros
-
-    def start_query_filters(self) -> None:
-        """Consulta a ESP32-S3 para descobrir quais filtros ela conhece."""
-        logger.info("Iniciando consulta de filtros disponíveis.")
-        self.btn_query_filters.setEnabled(False)
-        self.btn_apply_filters.setEnabled(False)
-        self.list_filters.clear()
-        self.lbl_filters_status.setText("Consultando…")
-
-        self.filter_query_thread = FilterQueryWorker(port=None)
-        self.filter_query_thread.status.connect(self.status_message.emit)
-        self.filter_query_thread.finished.connect(self._on_filters_received)
-        self.filter_query_thread.error.connect(self._on_filter_query_error)
-        self.filter_query_thread.start()
-
-    def _on_filters_received(self, filters: list, was_mock: bool) -> None:
-        logger.info(f"Filtros recebidos: {filters}")
-        self.btn_query_filters.setEnabled(True)
-
-        # Guarda os metadados completos de cada filtro (id, params) para uso
-        # posterior — a QListWidget só mostra o nome, então associamos o
-        # dicionário original a cada item via UserRole.
-        self._known_filters = {f["id"]: f for f in filters}
-
-        self.list_filters.clear()
-        for f in filters:
-            item = QListWidgetItem(f.get("name", f["id"]))
-            item.setData(Qt.ItemDataRole.UserRole, f["id"])
-            self.list_filters.addItem(item)
-
-        if was_mock:
-            self.lbl_filters_status.setText(
-                f"{len(filters)} filtro(s) de exemplo (modo simulado — sem placa conectada)."
-            )
-        else:
-            self.lbl_filters_status.setText(
-                f"{len(filters)} filtro(s) disponível(is) no pedal."
-            )
-
-        self.status_message.emit("Consulta de filtros concluída.")
-
-    def _on_filter_query_error(self, err_msg: str) -> None:
-        logger.error(f"Erro ao consultar filtros na ESP32-S3:\n{err_msg}")
-        self.btn_query_filters.setEnabled(True)
-        self.lbl_filters_status.setText("Falha ao consultar filtros.")
-
-        QMessageBox.critical(
-            self,
-            "Erro de comunicação",
-            f"Não foi possível consultar os filtros da ESP32-S3:\n\n"
-            f"{self._friendly_error_summary(err_msg)}\n\n"
-            f"Detalhes completos foram registrados no terminal/log.",
-        )
-
-    def _on_filter_selection_changed(self) -> None:
-        self.btn_apply_filters.setEnabled(
-            len(self.list_filters.selectedItems()) > 0
-        )
-
-    def apply_selected_filters(self) -> None:
-        """
-        Esqueleto inicial: por ora, apenas registra e notifica quais
-        filtros foram selecionados pelo usuário. O envio efetivo da
-        configuração de cada filtro (com seus parâmetros específicos,
-        ex.: freq_hz/gain_db de um low_shelf) depende de definirmos,
-        junto ao firmware, o formato exato de configuração por filtro.
-        """
-        selected_ids = [
-            item.data(Qt.ItemDataRole.UserRole)
-            for item in self.list_filters.selectedItems()
-        ]
-        selected_names = [item.text() for item in self.list_filters.selectedItems()]
-
-        logger.info(f"Filtros selecionados para aplicação: {selected_ids}")
-
-        self.status_message.emit(
-            f"{len(selected_ids)} filtro(s) selecionado(s) — "
-            f"envio de configuração ainda não implementado."
-        )
-        QMessageBox.information(
-            self,
-            "Seleção registrada",
-            "Filtros selecionados:\n\n"
-            + "\n".join(f"• {name}" for name in selected_names)
-            + "\n\nO envio da configuração de cada filtro para o pedal "
-            "ainda será implementado — por enquanto, esta tela apenas "
-            "registra a seleção."
-        )
 
     # Utilitários
 
@@ -300,7 +229,6 @@ class TabHardware(QWidget, Ui_TabHardware):
 
     def stop_threads(self) -> None:
         """Encerra as threads em execução, se houver (usado no closeEvent)."""
-        for thread in (self.hardware_thread, self.filter_query_thread):
-            if thread is not None and thread.isRunning():
-                thread.quit()
-                thread.wait(2000)
+        if self.hardware_thread is not None and self.hardware_thread.isRunning():
+            self.hardware_thread.quit()
+            self.hardware_thread.wait(2000)
