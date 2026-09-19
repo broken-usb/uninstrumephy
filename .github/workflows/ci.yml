@@ -36,6 +36,7 @@ jobs:
 
     - name: Run syntax check
       run: |
+        python -m py_compile core/effects_spec.py
         python -m py_compile core/separator.py
         python -m py_compile core/analyzer.py
         python -m py_compile core/hardware.py
