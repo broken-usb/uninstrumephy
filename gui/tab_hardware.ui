@@ -2,24 +2,37 @@
 <ui version="4.0">
  <class>TabHardware</class>
  <widget class="QWidget" name="TabHardware">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>680</width>
+    <height>520</height>
+   </rect>
+  </property>
   <layout class="QVBoxLayout" name="hardwareTabLayout">
    <property name="spacing">
-    <number>10</number>
+    <number>8</number>
    </property>
    <property name="leftMargin">
-    <number>16</number>
+    <number>12</number>
    </property>
    <property name="topMargin">
-    <number>16</number>
+    <number>10</number>
    </property>
    <property name="rightMargin">
-    <number>16</number>
+    <number>12</number>
    </property>
    <property name="bottomMargin">
-    <number>16</number>
+    <number>10</number>
    </property>
    <item>
     <widget class="QLabel" name="lbl_hardware_title">
+     <property name="font">
+      <font>
+       <bold>true</bold>
+      </font>
+     </property>
      <property name="text">
       <string>🔌  Pedal ESP32-S3</string>
      </property>
@@ -37,6 +50,9 @@
    </item>
    <item>
     <layout class="QHBoxLayout" name="presetsLayout">
+     <property name="spacing">
+      <number>6</number>
+     </property>
      <item>
       <widget class="QLabel" name="lbl_presets_title">
        <property name="text">
@@ -48,7 +64,7 @@
       <widget class="QComboBox" name="combo_presets">
        <property name="minimumSize">
         <size>
-         <width>160</width>
+         <width>150</width>
          <height>0</height>
         </size>
        </property>
@@ -102,46 +118,62 @@
    </item>
    <item>
     <widget class="QLabel" name="lbl_hardware_hint">
+     <property name="styleSheet">
+      <string notr="true">color: #888; font-size: 11px;</string>
+     </property>
      <property name="text">
-      <string>Os controles abaixo espelham os efeitos disponíveis no firmware. O Noise Gate pode ser preenchido automaticamente a partir do Tone Matching, ou ajustado manualmente aqui.</string>
+      <string>Os controles abaixo espelham os efeitos disponíveis no firmware. O Noise Gate e o Equalizador podem ser preenchidos automaticamente a partir do Tone Matching, ou ajustados manualmente aqui.</string>
      </property>
      <property name="wordWrap">
       <bool>true</bool>
-     </property>
-     <property name="styleSheet">
-      <string notr="true">color: #888; font-size: 11px;</string>
      </property>
     </widget>
    </item>
    <item>
     <widget class="QLabel" name="lbl_gate_source">
-     <property name="text">
-      <string></string>
-     </property>
      <property name="styleSheet">
       <string notr="true">color: #888; font-size: 11px;</string>
+     </property>
+     <property name="text">
+      <string/>
      </property>
     </widget>
    </item>
    <item>
-    <widget class="QWidget" name="containerEffects" native="true">
-     <layout class="QVBoxLayout" name="effectsContainerLayout">
-      <property name="spacing">
-       <number>10</number>
+    <widget class="QScrollArea" name="scrollAreaEffects">
+     <property name="frameShape">
+      <enum>QFrame::Shape::NoFrame</enum>
+     </property>
+     <property name="widgetResizable">
+      <bool>true</bool>
+     </property>
+     <widget class="QWidget" name="containerEffects">
+      <property name="geometry">
+       <rect>
+        <x>0</x>
+        <y>0</y>
+        <width>656</width>
+        <height>300</height>
+       </rect>
       </property>
-      <property name="leftMargin">
-       <number>0</number>
-      </property>
-      <property name="topMargin">
-       <number>0</number>
-      </property>
-      <property name="rightMargin">
-       <number>0</number>
-      </property>
-      <property name="bottomMargin">
-       <number>0</number>
-      </property>
-     </layout>
+      <layout class="QVBoxLayout" name="effectsContainerLayout">
+       <property name="spacing">
+        <number>6</number>
+       </property>
+       <property name="leftMargin">
+        <number>0</number>
+       </property>
+       <property name="topMargin">
+        <number>0</number>
+       </property>
+       <property name="rightMargin">
+        <number>6</number>
+       </property>
+       <property name="bottomMargin">
+        <number>0</number>
+       </property>
+      </layout>
+     </widget>
     </widget>
    </item>
    <item>
@@ -156,23 +188,21 @@
    </item>
    <item>
     <widget class="QPushButton" name="btn_send_hardware">
+     <property name="minimumSize">
+      <size>
+       <width>0</width>
+       <height>32</height>
+      </size>
+     </property>
+     <property name="font">
+      <font>
+       <bold>true</bold>
+      </font>
+     </property>
      <property name="text">
       <string>🔌  Enviar Estado para o Pedal</string>
      </property>
     </widget>
-   </item>
-   <item>
-    <spacer name="hardwareBottomSpacer">
-     <property name="orientation">
-      <enum>Qt::Orientation::Vertical</enum>
-     </property>
-     <property name="sizeHint" stdset="0">
-      <size>
-       <width>20</width>
-       <height>20</height>
-      </size>
-     </property>
-    </spacer>
    </item>
   </layout>
  </widget>
