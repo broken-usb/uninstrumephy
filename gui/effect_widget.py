@@ -17,19 +17,8 @@ from core.effects_spec import EffectSpec, ParamSpec
 
 class EffectWidget(QFrame):
     """
-    Widget que renderiza um efeito completo (checkbox "ativo" + um slider
-    por parâmetro, cada um com seu label de nome e de valor atual) a
-    partir de uma única EffectSpec.
-
-    Este widget é a peça central da modularidade da aba de Hardware:
-    adicionar um novo efeito ao pedal não exige criar um novo widget,
-    nem editar o .ui — basta acrescentar uma EffectSpec em
-    core/effects_spec.py, e um EffectWidget correspondente é criado
-    dinamicamente pela aba de Hardware (ver TabHardware._build_effect_widgets).
-
-    Emite `changed` sempre que o usuário altera o estado ativo ou
-    qualquer parâmetro, para quem quiser reagir a mudanças em tempo real
-    (não usado hoje, mas disponível para uso futuro, ex.: preview ao vivo).
+    Widget modular e compacto para representação de cada efeito.
+    Otimizado com margens reduzidas para alta densidade em telas 1280x720.
     """
 
     changed = pyqtSignal()
@@ -41,40 +30,54 @@ class EffectWidget(QFrame):
         self._value_labels: dict[str, QLabel] = {}
 
         self.setFrameShape(QFrame.Shape.StyledPanel)
+        self.setStyleSheet(
+            "EffectWidget { border: 1px solid rgba(120, 120, 120, 0.25); "
+            "border-radius: 6px; background-color: rgba(255, 255, 255, 0.02); }"
+        )
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 8, 10, 8)
-        layout.setSpacing(6)
+        layout.setContentsMargins(8, 4, 8, 4)
+        layout.setSpacing(3)
 
         self.checkbox_active = QCheckBox(spec.name)
+        self.checkbox_active.setStyleSheet("font-weight: bold; font-size: 11px;")
         layout.addWidget(self.checkbox_active)
         self.checkbox_active.toggled.connect(self.changed.emit)
 
         for param in spec.params:
             layout.addLayout(self._build_param_row(param))
 
+    def _format_value(self, param: ParamSpec, value: int) -> str:
+        if param.format_display is not None:
+            return param.format_display(value)
+        return f"{value}{param.unit}"
+
     def _build_param_row(self, param: ParamSpec) -> QHBoxLayout:
         row = QHBoxLayout()
+        row.setContentsMargins(0, 0, 0, 0)
+        row.setSpacing(6)
 
         name_label = QLabel(f"{param.label}:")
-        name_label.setMinimumWidth(90)
+        name_label.setMinimumWidth(100)
+        name_label.setStyleSheet("font-size: 11px; color: #bbb;")
         row.addWidget(name_label)
 
         slider = QSlider(Qt.Orientation.Horizontal)
         slider.setMinimum(param.min_value)
         slider.setMaximum(param.max_value)
         slider.setValue(param.default)
-        slider.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
-        )
+        slider.setFixedHeight(18)
+        slider.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         row.addWidget(slider)
 
-        value_label = QLabel(f"{param.default}{param.unit}")
-        value_label.setMinimumWidth(60)
+        value_label = QLabel(self._format_value(param, param.default))
+        value_label.setMinimumWidth(65)
+        value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        value_label.setStyleSheet("font-size: 10px; font-weight: bold; color: #ddd;")
         row.addWidget(value_label)
 
         slider.valueChanged.connect(
-            lambda v, u=param.unit, lbl=value_label: lbl.setText(f"{v}{u}")
+            lambda v, p=param, lbl=value_label: lbl.setText(self._format_value(p, v))
         )
         slider.valueChanged.connect(self.changed.emit)
 
@@ -83,8 +86,6 @@ class EffectWidget(QFrame):
 
         return row
 
-    # API pública
-
     def is_active(self) -> bool:
         return self.checkbox_active.isChecked()
 
@@ -92,21 +93,14 @@ class EffectWidget(QFrame):
         self.checkbox_active.setChecked(active)
 
     def get_param_value(self, field_name: str) -> int:
-        """Retorna o valor de exibição atual (ex.: 21, em % ou dB) de um parâmetro."""
         return self._sliders[field_name].value()
 
     def set_param_value(self, field_name: str, value: int) -> None:
-        """Define o valor de exibição de um parâmetro, respeitando os limites do slider."""
         slider = self._sliders[field_name]
         clamped = max(slider.minimum(), min(slider.maximum(), value))
         slider.setValue(clamped)
 
     def to_struct_fields(self) -> dict:
-        """
-        Retorna um dicionário {nome_do_campo_na_struct: valor} pronto
-        para popular um PedalState, já convertendo cada parâmetro de
-        exibição para o valor real via ParamSpec.to_struct.
-        """
         fields = {self.spec.active_field: self.is_active()}
         for param in self.spec.params:
             ui_value = self.get_param_value(param.field_name)
@@ -114,12 +108,6 @@ class EffectWidget(QFrame):
         return fields
 
     def from_struct_fields(self, state) -> None:
-        """
-        Popula o widget a partir de um PedalState existente (ou qualquer
-        objeto com os atributos correspondentes), convertendo os valores
-        reais da struct de volta para valores de exibição via
-        ParamSpec.from_struct.
-        """
         self.set_active(bool(getattr(state, self.spec.active_field)))
         for param in self.spec.params:
             struct_value = getattr(state, param.field_name)

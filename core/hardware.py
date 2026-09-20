@@ -11,12 +11,9 @@ from serial.tools import list_ports
 logger = logging.getLogger(__name__)
 
 # Porta especial que ativa o modo simulado (sem hardware físico conectado).
-# Útil para desenvolver e demonstrar o software antes da placa chegar.
 MOCK_PORT = "MOCK"
 
-# Byte delimitador de fim de pacote no protocolo COBS. O COBS garante que
-# este valor nunca aparece no meio dos dados codificados, então ele pode
-# ser usado com segurança para marcar onde um pacote termina.
+# Byte delimitador de fim de pacote no protocolo COBS.
 PACKET_DELIMITER = 0x00
 
 
@@ -28,15 +25,11 @@ def cobs_encode(data: bytes) -> bytes:
     """
     Codifica `data` em COBS (Consistent Overhead Byte Stuffing), removendo
     todos os bytes 0x00 do payload e substituindo-os por marcadores de
-    comprimento. Réplica em Python do `cobs_encode()` usado no firmware
-    (Board B / UI), garantindo compatibilidade byte a byte.
-
-    O resultado NUNCA contém 0x00 internamente — o chamador deve anexar
-    um único 0x00 ao final para marcar o fim do pacote na UART.
+    comprimento. Réplica em Python do `cobs_encode()` usado no firmware.
     """
     output = bytearray()
     code_index = 0
-    output.append(0)  # placeholder do primeiro code, preenchido no final do bloco
+    output.append(0)
     code = 1
 
     for byte in data:
@@ -61,10 +54,7 @@ def cobs_encode(data: bytes) -> bytes:
 def cobs_decode(data: bytes) -> bytes:
     """
     Decodifica um bloco COBS de volta aos bytes originais. Réplica em
-    Python do `cobs_decode()` usado no firmware (Board A / DSP Master).
-
-    Retorna b"" se o bloco estiver malformado (mesmo comportamento do
-    `return 0` no código C original).
+    Python do `cobs_decode()` usado no firmware.
     """
     output = bytearray()
     read_index = 0
@@ -86,130 +76,185 @@ def cobs_decode(data: bytes) -> bytes:
 
 class PedalState:
     """
-    Espelha em Python a struct C `PedalState` (arquivo PedalState.h,
-    compartilhado entre as duas placas ESP32-S3 do pedal). A struct é
-    `__attribute__((packed))`, ou seja, sem padding entre os campos —
-    o formato abaixo replica exatamente essa disposição de memória.
+    Espelha a struct C++ `PedalState` (140 bytes empacotados, __attribute__((packed))).
 
-    Layout (little-endian, 27 bytes total):
-        uint8_t  gate_active            (offset  0, 1 byte)
-        float    gate_threshold         (offset  1, 4 bytes)
-        uint8_t  dist_active            (offset  5, 1 byte)
-        float    dist_drive             (offset  6, 4 bytes)
-        float    dist_level             (offset 10, 4 bytes)
-        uint8_t  delay_active           (offset 14, 1 byte)
-        uint32_t delay_time_samples     (offset 15, 4 bytes)
-        float    delay_feedback         (offset 19, 4 bytes)
-        float    delay_mix              (offset 23, 4 bytes)
-
-    IMPORTANTE: esta struct não possui campos de equalização (bass/mid/
-    treble) — o firmware atual só implementa Noise Gate, Overdrive e
-    Delay. Um "Equalizador" aparece comentado no código da UI (Board B)
-    como efeito futuro ainda não habilitado. Os parâmetros de EQ
-    calculados pelo Tone Matching não têm, por ora, um destino no
-    protocolo — isso precisa ser resolvido com o time de firmware antes
-    de o EQ poder ser efetivamente aplicado no pedal.
+    Layout de memória:
+        1.  Noise Gate:     uint8_t, float (5 bytes)
+        2.  Compressor:     uint8_t, float, float, float (13 bytes)
+        3.  Auto-Wah:       uint8_t, float, float, float (13 bytes)
+        4.  Overdrive:      uint8_t, float, float, float (13 bytes)
+        5.  Equalizador 4B: uint8_t, float, float, float, float (17 bytes)
+        6.  Modulação:      uint8_t, float, float, float (13 bytes)
+        7.  Tape Delay:     uint8_t, uint32_t, float, float (13 bytes)
+        8.  Reverb Plate:   uint8_t, float, float, float (13 bytes)
+        9.  Cab Sim:        uint8_t, uint8_t (2 bytes)
+        10. Bitcrusher:     uint8_t, uint8_t, uint8_t, float (7 bytes)
+        11. Tremolo:        uint8_t, float, float, uint8_t, float (14 bytes)
+        12. Phaser:         uint8_t, float, float, float, float (17 bytes)
+        Total: 140 bytes.
     """
 
-    STRUCT_FORMAT = "<BfBffBIff"
-    SIZE = struct.calcsize(STRUCT_FORMAT)  # 27 bytes
+    STRUCT_FORMAT = "<BfBfffBfffBfffBffffBfffBIffBfffBBBBBfBffBfBffff"
+    SIZE = struct.calcsize(STRUCT_FORMAT)  # 140 bytes
 
     def __init__(
         self,
-        gate_active: bool = False,
-        gate_threshold: float = 0.0,
+        gate_active: bool = True,
+        gate_threshold: float = 0.005,
+        comp_active: bool = False,
+        comp_threshold: float = 0.4,
+        comp_ratio: float = 3.0,
+        comp_makeup_gain: float = 1.0,
+        wah_active: bool = False,
+        wah_sensitivity: float = 0.5,
+        wah_base_freq: float = 350.0,
+        wah_resonance: float = 0.6,
         dist_active: bool = False,
-        dist_drive: float = 1.0,
-        dist_level: float = 1.0,
+        dist_drive: float = 2.0,
+        dist_tone: float = 0.5,
+        dist_level: float = 0.8,
+        eq_active: bool = False,
+        eq_low_gain: float = 0.0,
+        eq_mid1_gain: float = 0.0,
+        eq_mid2_gain: float = 0.0,
+        eq_high_gain: float = 0.0,
+        mod_active: bool = False,
+        mod_rate_hz: float = 1.5,
+        mod_depth: float = 0.6,
+        mod_mix: float = 0.5,
         delay_active: bool = False,
-        delay_time_samples: int = 0,
-        delay_feedback: float = 0.0,
-        delay_mix: float = 0.0,
+        delay_time_samples: int = 15435,  # 350 ms @ 44100 Hz
+        delay_feedback: float = 0.4,
+        delay_mix: float = 0.3,
+        reverb_active: bool = False,
+        reverb_decay: float = 0.5,
+        reverb_damping: float = 0.3,
+        reverb_mix: float = 0.25,
+        cab_active: bool = False,
+        cab_index: int = 0,
+        bitcrusher_active: bool = False,
+        bitcrusher_bits: int = 8,
+        bitcrusher_hold: int = 4,
+        bitcrusher_mix: float = 0.5,
+        tremolo_active: bool = False,
+        tremolo_rate_hz: float = 4.0,
+        tremolo_depth: float = 0.5,
+        tremolo_shape: int = 0,
+        tremolo_mix: float = 1.0,
+        phaser_active: bool = False,
+        phaser_rate_hz: float = 0.6,
+        phaser_depth: float = 0.7,
+        phaser_feedback: float = 0.3,
+        phaser_mix: float = 0.5,
     ) -> None:
         self.gate_active = gate_active
         self.gate_threshold = gate_threshold
+        self.comp_active = comp_active
+        self.comp_threshold = comp_threshold
+        self.comp_ratio = comp_ratio
+        self.comp_makeup_gain = comp_makeup_gain
+        self.wah_active = wah_active
+        self.wah_sensitivity = wah_sensitivity
+        self.wah_base_freq = wah_base_freq
+        self.wah_resonance = wah_resonance
         self.dist_active = dist_active
         self.dist_drive = dist_drive
+        self.dist_tone = dist_tone
         self.dist_level = dist_level
+        self.eq_active = eq_active
+        self.eq_low_gain = eq_low_gain
+        self.eq_mid1_gain = eq_mid1_gain
+        self.eq_mid2_gain = eq_mid2_gain
+        self.eq_high_gain = eq_high_gain
+        self.mod_active = mod_active
+        self.mod_rate_hz = mod_rate_hz
+        self.mod_depth = mod_depth
+        self.mod_mix = mod_mix
         self.delay_active = delay_active
         self.delay_time_samples = delay_time_samples
         self.delay_feedback = delay_feedback
         self.delay_mix = delay_mix
+        self.reverb_active = reverb_active
+        self.reverb_decay = reverb_decay
+        self.reverb_damping = reverb_damping
+        self.reverb_mix = reverb_mix
+        self.cab_active = cab_active
+        self.cab_index = cab_index
+        self.bitcrusher_active = bitcrusher_active
+        self.bitcrusher_bits = bitcrusher_bits
+        self.bitcrusher_hold = bitcrusher_hold
+        self.bitcrusher_mix = bitcrusher_mix
+        self.tremolo_active = tremolo_active
+        self.tremolo_rate_hz = tremolo_rate_hz
+        self.tremolo_depth = tremolo_depth
+        self.tremolo_shape = tremolo_shape
+        self.tremolo_mix = tremolo_mix
+        self.phaser_active = phaser_active
+        self.phaser_rate_hz = phaser_rate_hz
+        self.phaser_depth = phaser_depth
+        self.phaser_feedback = phaser_feedback
+        self.phaser_mix = phaser_mix
 
     def pack(self) -> bytes:
-        """Serializa para os 27 bytes binários exatos esperados pelo firmware."""
+        """Serializa exatamente os 140 bytes esperados pela ESP32-S3."""
         return struct.pack(
             self.STRUCT_FORMAT,
-            int(self.gate_active),
-            float(self.gate_threshold),
-            int(self.dist_active),
-            float(self.dist_drive),
-            float(self.dist_level),
-            int(self.delay_active),
-            int(self.delay_time_samples),
-            float(self.delay_feedback),
-            float(self.delay_mix),
+            int(self.gate_active), float(self.gate_threshold),
+            int(self.comp_active), float(self.comp_threshold), float(self.comp_ratio), float(self.comp_makeup_gain),
+            int(self.wah_active), float(self.wah_sensitivity), float(self.wah_base_freq), float(self.wah_resonance),
+            int(self.dist_active), float(self.dist_drive), float(self.dist_tone), float(self.dist_level),
+            int(self.eq_active), float(self.eq_low_gain), float(self.eq_mid1_gain), float(self.eq_mid2_gain), float(self.eq_high_gain),
+            int(self.mod_active), float(self.mod_rate_hz), float(self.mod_depth), float(self.mod_mix),
+            int(self.delay_active), int(self.delay_time_samples), float(self.delay_feedback), float(self.delay_mix),
+            int(self.reverb_active), float(self.reverb_decay), float(self.reverb_damping), float(self.reverb_mix),
+            int(self.cab_active), int(self.cab_index),
+            int(self.bitcrusher_active), int(self.bitcrusher_bits), int(self.bitcrusher_hold), float(self.bitcrusher_mix),
+            int(self.tremolo_active), float(self.tremolo_rate_hz), float(self.tremolo_depth), int(self.tremolo_shape), float(self.tremolo_mix),
+            int(self.phaser_active), float(self.phaser_rate_hz), float(self.phaser_depth), float(self.phaser_feedback), float(self.phaser_mix),
         )
 
     @classmethod
     def unpack(cls, data: bytes) -> "PedalState":
-        """Desserializa 27 bytes binários de volta para um PedalState."""
+        """Desserializa 140 bytes de volta para uma instância de PedalState."""
         if len(data) != cls.SIZE:
             raise ValueError(
-                f"Tamanho inválido para PedalState: recebido {len(data)} "
-                f"bytes, esperado {cls.SIZE}."
+                f"Tamanho de pacote incompatível: recebido {len(data)} bytes, esperado {cls.SIZE}."
             )
-        fields = struct.unpack(cls.STRUCT_FORMAT, data)
+        f = struct.unpack(cls.STRUCT_FORMAT, data)
         return cls(
-            gate_active=bool(fields[0]),
-            gate_threshold=fields[1],
-            dist_active=bool(fields[2]),
-            dist_drive=fields[3],
-            dist_level=fields[4],
-            delay_active=bool(fields[5]),
-            delay_time_samples=fields[6],
-            delay_feedback=fields[7],
-            delay_mix=fields[8],
+            gate_active=bool(f[0]), gate_threshold=f[1],
+            comp_active=bool(f[2]), comp_threshold=f[3], comp_ratio=f[4], comp_makeup_gain=f[5],
+            wah_active=bool(f[6]), wah_sensitivity=f[7], wah_base_freq=f[8], wah_resonance=f[9],
+            dist_active=bool(f[10]), dist_drive=f[11], dist_tone=f[12], dist_level=f[13],
+            eq_active=bool(f[14]), eq_low_gain=f[15], eq_mid1_gain=f[16], eq_mid2_gain=f[17], eq_high_gain=f[18],
+            mod_active=bool(f[19]), mod_rate_hz=f[20], mod_depth=f[21], mod_mix=f[22],
+            delay_active=bool(f[23]), delay_time_samples=f[24], delay_feedback=f[25], delay_mix=f[26],
+            reverb_active=bool(f[27]), reverb_decay=f[28], reverb_damping=f[29], reverb_mix=f[30],
+            cab_active=bool(f[31]), cab_index=f[32],
+            bitcrusher_active=bool(f[33]), bitcrusher_bits=f[34], bitcrusher_hold=f[35], bitcrusher_mix=f[36],
+            tremolo_active=bool(f[37]), tremolo_rate_hz=f[38], tremolo_depth=f[39], tremolo_shape=f[40], tremolo_mix=f[41],
+            phaser_active=bool(f[42]), phaser_rate_hz=f[43], phaser_depth=f[44], phaser_feedback=f[45], phaser_mix=f[46],
         )
 
     def __repr__(self) -> str:
         return (
-            f"PedalState(gate_active={self.gate_active}, "
-            f"gate_threshold={self.gate_threshold}, "
-            f"dist_active={self.dist_active}, "
-            f"dist_drive={self.dist_drive}, dist_level={self.dist_level}, "
-            f"delay_active={self.delay_active}, "
-            f"delay_time_samples={self.delay_time_samples}, "
-            f"delay_feedback={self.delay_feedback}, "
-            f"delay_mix={self.delay_mix})"
+            f"PedalState(Gate={'ON' if self.gate_active else 'OFF'}, "
+            f"Comp={'ON' if self.comp_active else 'OFF'}, "
+            f"Wah={'ON' if self.wah_active else 'OFF'}, "
+            f"Drive={'ON' if self.dist_active else 'OFF'}, "
+            f"EQ={'ON' if self.eq_active else 'OFF'}, "
+            f"Mod={'ON' if self.mod_active else 'OFF'}, "
+            f"Delay={'ON' if self.delay_active else 'OFF'}, "
+            f"Reverb={'ON' if self.reverb_active else 'OFF'}, "
+            f"Bitcrusher={'ON' if self.bitcrusher_active else 'OFF'}, "
+            f"Tremolo={'ON' if self.tremolo_active else 'OFF'}, "
+            f"Phaser={'ON' if self.phaser_active else 'OFF'})"
         )
 
 
 class ESP32Link:
-    """
-    Envia um PedalState para a ESP32-S3 conectada via USB (porta serial),
-    usando o protocolo real implementado pelo firmware: a struct é
-    serializada em binário (27 bytes, ver PedalState), codificada em
-    COBS e terminada por um byte 0x00 que marca o fim do pacote na UART.
-
-    Este protocolo substitui a versão anterior baseada em JSON — o
-    firmware real (Board A: DSP Master / Board B: UI) não fala JSON, e
-    não expõe um comando de descoberta de filtros: os efeitos disponíveis
-    (Noise Gate, Overdrive, Delay) são fixos no firmware.
-
-    Modo simulado:
-        Use port=MOCK_PORT (ou port="MOCK") para simular o envio sem
-        precisar de hardware físico conectado. Nesse modo, nada é
-        escrito de fato em uma porta serial — o pacote COBS resultante é
-        apenas logado, o que permite testar o fluxo da GUI sem a placa.
-    """
-
     BAUDRATE: int = 115_200
     TIMEOUT_S: float = 2.0
-
-    # Tempo de espera após abrir a porta: a maioria das placas baseadas em
-    # ESP32 reinicia ao abrir a conexão serial (DTR/RTS), então é preciso
-    # aguardar o boot antes de enviar dados, ou os primeiros bytes se perdem.
     BOOT_DELAY_S: float = 2.0
 
     def __init__(self, port: str | None = None) -> None:
@@ -219,14 +264,6 @@ class ESP32Link:
 
     @staticmethod
     def _autodetect_port() -> str:
-        """
-        Tenta localizar automaticamente a porta da ESP32-S3 pela descrição
-        do dispositivo USB. Ajuste os termos de busca conforme o chip
-        USB-serial da placa (ex.: CP210x, CH340, nativo USB-CDC etc.).
-
-        Se nenhuma porta for encontrada, cai automaticamente no modo mock
-        para não travar o fluxo do usuário — apenas registra um aviso.
-        """
         candidates = [
             p.device
             for p in list_ports.comports()
@@ -236,21 +273,17 @@ class ESP32Link:
             )
         ]
         if not candidates:
-            logger.warning(
-                "Nenhuma porta serial compatível foi encontrada. "
-                "Usando modo simulado (MOCK)."
-            )
+            logger.warning("Nenhuma porta serial detectada. Usando modo simulado (MOCK).")
             return MOCK_PORT
         return candidates[0]
 
     @staticmethod
     def list_available_ports() -> list[str]:
-        """Retorna a lista de portas seriais disponíveis no sistema, para popular um combo na GUI."""
         return [p.device for p in list_ports.comports()]
 
     def connect(self) -> None:
         if self.is_mock:
-            logger.info("[MOCK] Conexão simulada estabelecida (sem hardware).")
+            logger.info("[MOCK] Conexão simulada ativa.")
             return
 
         try:
@@ -260,7 +293,6 @@ class ESP32Link:
                 timeout=self.TIMEOUT_S,
                 write_timeout=self.TIMEOUT_S,
             )
-            # Aguarda o boot/reset da placa após abrir a porta
             time.sleep(self.BOOT_DELAY_S)
             logger.info(f"Conectado à ESP32-S3 na porta {self.port}")
         except serial.SerialException as exc:
@@ -271,30 +303,14 @@ class ESP32Link:
         state: PedalState,
         progress_cb: Callable[[str], None] | None = None,
     ) -> None:
-        """
-        Envia um PedalState completo para o pedal: serializa a struct em
-        27 bytes binários, codifica em COBS, e transmite seguido do byte
-        delimitador 0x00.
-
-        Args:
-            state: PedalState com os parâmetros atuais de gate/distortion/delay.
-            progress_cb: Callback opcional de progresso, para conectar a
-                    um pyqtSignal da UI.
-
-        Raises:
-            HardwareLinkError: Se a conexão ou o envio falharem.
-        """
         raw = state.pack()
         packet = cobs_encode(raw) + bytes([PACKET_DELIMITER])
 
         if self.is_mock:
             self._notify(progress_cb, "[Simulado] Conectando…")
             self._notify(progress_cb, f"[Simulado] Enviando: {state!r}")
-            logger.info(
-                f"[MOCK] PedalState que seria enviado: {state!r} "
-                f"({len(raw)} bytes crus, {len(packet)} bytes no pacote COBS)"
-            )
-            self._notify(progress_cb, "[Simulado] Envio concluído (nenhum hardware real envolvido).")
+            logger.info(f"[MOCK] Pacote COBS gerado: {len(raw)} bytes crus -> {len(packet)} bytes transmitidos")
+            self._notify(progress_cb, "[Simulado] Envio concluído.")
             return
 
         if self._conn is None or not self._conn.is_open:
@@ -305,15 +321,12 @@ class ESP32Link:
             self._notify(progress_cb, "Enviando parâmetros…")
             self._conn.write(packet)
             self._conn.flush()
-            logger.info(f"PedalState enviado: {state!r} ({len(packet)} bytes no pacote)")
+            logger.info(f"PedalState enviado ({len(packet)} bytes).")
             self._notify(progress_cb, "Envio concluído.")
         except serial.SerialTimeoutException as exc:
-            raise HardwareLinkError(
-                f"Timeout ao enviar dados para {self.port}: a placa não "
-                f"respondeu a tempo (verifique o cabo/conexão). Detalhe: {exc}"
-            ) from exc
+            raise HardwareLinkError(f"Timeout ao comunicar com {self.port}: {exc}") from exc
         except serial.SerialException as exc:
-            raise HardwareLinkError(f"Falha ao enviar dados: {exc}") from exc
+            raise HardwareLinkError(f"Falha na transmissão serial: {exc}") from exc
 
     def close(self) -> None:
         if self._conn is not None and self._conn.is_open:
