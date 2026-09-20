@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QSystemTrayIcon,
 )
-from PyQt6.QtCore import QThread, pyqtSignal, QUrl, Qt
+from PyQt6.QtCore import QThread, pyqtSignal, QUrl, Qt, QTimer
 from PyQt6.QtGui import QPixmap, QImage
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
@@ -112,6 +112,7 @@ class MainWindow(QDialog, Ui_Dialog):
 
     def _connect_signals(self) -> None:
         self.btn_load.clicked.connect(self.load_audio_file)
+        self.btn_record.clicked.connect(self.open_record_dialog)
 
         self.slider_vol_orig.valueChanged.connect(self._apply_master_volume)
         self.slider_vol_stem.valueChanged.connect(self._apply_master_volume)
@@ -153,6 +154,70 @@ class MainWindow(QDialog, Ui_Dialog):
     def _apply_master_volume(self) -> None:
         self.audio_out_orig.setVolume(self.slider_vol_orig.value() / 100.0)
         self.audio_out_stem.setVolume(self.slider_vol_stem.value() / 100.0)
+
+    def open_record_dialog(self) -> None:
+        """Abre o diálogo para capturar áudio direto da ESP32-S3 ou microfone."""
+        from gui.dialog_record import RecordDialog
+        dlg = RecordDialog(self)
+        dlg.recording_finished.connect(self.load_direct_audio)
+        dlg.exec()
+
+    def load_direct_audio(self, filepath: str, auto_run_tonematching: bool = False) -> None:
+        """
+        Carrega a gravação direta da guitarra, ignorando o Demucs e
+        preparando a aba de Tone Matching de forma imediata.
+        """
+        logger.info(f"Carregando áudio de entrada direta: {filepath}")
+        self.path_original = filepath
+        self.path_guitarra = filepath
+        self.path_stems_dir = str(Path(filepath).parent)
+
+        try:
+            self.player_orig.stop()
+        except RuntimeError:
+            pass
+        try:
+            self.player_stem.stop()
+        except RuntimeError:
+            pass
+
+        self.lbl_filepath.setText(f"{Path(filepath).name} [Entrada Direta]")
+        self.lbl_info.setText("Guitarra Direta (ESP32 / Mic) | --:--")
+        self.lbl_metadata.setText(
+            f"Origem: Entrada Direta (ESP32-S3 / Microfone)\n"
+            f"Faixa: Guitarra Isolada\n"
+            f"Arquivo: {Path(filepath).name}\n"
+            f"Demucs: Ignorado (Faixa já isolada)"
+        )
+        self.lbl_cover.clear()
+        self.lbl_cover.setText("🎸")
+
+        self.btn_play_orig.setEnabled(True)
+        self.btn_stop_orig.setEnabled(False)
+        self.btn_play_guitar.setEnabled(True)
+        self.btn_stop_guitar.setEnabled(False)
+
+        self.combo_stems.blockSignals(True)
+        self.combo_stems.clear()
+        self.combo_stems.addItem("guitar")
+        self.combo_stems.setCurrentIndex(0)
+        self.combo_stems.setEnabled(True)
+        self.combo_stems.blockSignals(False)
+
+        self.tab_demucs.reset()
+        self.tab_demucs.set_audio_path(filepath)
+
+        self.tab_tonematching.reset()
+        self.tab_tonematching.set_selected_stem("guitar", filepath)
+
+        # Alterna para a aba de Tone Matching
+        self.tabsMain.setCurrentWidget(self.tab_tonematching)
+
+        self._set_status("Gravação da ESP32/Microfone carregada com sucesso! Demucs ignorado.")
+        self._notify("Entrada Direta Carregada", "Áudio pronto para análise na aba Tone Matching.")
+
+        if auto_run_tonematching:
+            QTimer.singleShot(300, self.tab_tonematching.start_analysis)
 
     def load_audio_file(self) -> None:
         file_name, _ = QFileDialog.getOpenFileName(
@@ -271,6 +336,7 @@ class MainWindow(QDialog, Ui_Dialog):
 
     def _on_demucs_started(self) -> None:
         self.btn_load.setEnabled(False)
+        self.btn_record.setEnabled(False)
         self.progress_bar.setRange(0, 0)
         self._notify("Separação de faixas iniciada", f"Processando '{Path(self.path_original).name}' com o Demucs…")
 
@@ -281,6 +347,7 @@ class MainWindow(QDialog, Ui_Dialog):
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         self.btn_load.setEnabled(True)
+        self.btn_record.setEnabled(True)
         self.btn_play_guitar.setEnabled(True)
         self.btn_stop_guitar.setEnabled(False)
 
@@ -313,10 +380,13 @@ class MainWindow(QDialog, Ui_Dialog):
             candidate = Path(self.path_stems_dir) / f"{stem_name}.wav"
             if candidate.exists():
                 stem_path = str(candidate)
+        elif stem_name and self.path_guitarra:
+            stem_path = self.path_guitarra
         self.tab_tonematching.set_selected_stem(stem_name, stem_path)
 
     def _on_analysis_started(self) -> None:
         self.btn_load.setEnabled(False)
+        self.btn_record.setEnabled(False)
         self.progress_bar.setRange(0, 0)
         stem_name = self.combo_stems.currentText()
         self._notify("Tone Matching iniciado", f"Analisando a faixa '{stem_name}'…")
@@ -325,6 +395,7 @@ class MainWindow(QDialog, Ui_Dialog):
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         self.btn_load.setEnabled(True)
+        self.btn_record.setEnabled(True)
 
         gate = params.get("noise_gate_threshold_db", "--")
         eq4 = params.get("eq_4bands", {})
@@ -336,17 +407,17 @@ class MainWindow(QDialog, Ui_Dialog):
             f"M2: {eq4.get('mid2_db', 0):+d}dB | High: {eq4.get('high_db', 0):+d}dB"
         )
 
-        # Propaga todos os parâmetros extraídos para os EffectWidgets da aba de hardware
         self.tab_hardware.set_params(params)
 
         if is_silent:
-            self._set_status("Aviso: o stem analisado está em silêncio absoluto.")
+            self._set_status("Aviso: o áudio analisado está em silêncio absoluto.")
         else:
             self._set_status("Tone Matching concluído: parâmetros adaptativos calculados!")
             self._notify("Tone Matching concluído", f"Parâmetros calculados para '{analyzed_stem}'.")
 
     def _on_hardware_send_started(self) -> None:
         self.btn_load.setEnabled(False)
+        self.btn_record.setEnabled(False)
         self.progress_bar.setRange(0, 0)
         self._notify("Envio iniciado", "Transmitindo estado completo (140B) para a ESP32-S3…")
 
@@ -354,6 +425,7 @@ class MainWindow(QDialog, Ui_Dialog):
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(100)
         self.btn_load.setEnabled(True)
+        self.btn_record.setEnabled(True)
         if was_mock:
             self._set_status("Simulação concluída (modo MOCK).")
         else:
@@ -364,6 +436,7 @@ class MainWindow(QDialog, Ui_Dialog):
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self.btn_load.setEnabled(True)
+        self.btn_record.setEnabled(True)
         self._set_status("Erro ao enviar para a pedaleira.")
         self._notify("Falha no envio", self._friendly_error_summary(err_msg), icon=QSystemTrayIcon.MessageIcon.Critical)
 
@@ -371,6 +444,7 @@ class MainWindow(QDialog, Ui_Dialog):
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
         self.btn_load.setEnabled(True)
+        self.btn_record.setEnabled(True)
         self._set_status("Erro no processamento.")
         QMessageBox.critical(self, "Erro", self._friendly_error_summary(err_msg))
 
@@ -401,7 +475,7 @@ class MainWindow(QDialog, Ui_Dialog):
         self.btn_stop_orig.setEnabled(playing or paused)
 
     def toggle_stem(self) -> None:
-        if not self.path_stems_dir:
+        if not self.path_stems_dir and not self.path_guitarra:
             return
         state = self.player_stem.playbackState()
         if state == QMediaPlayer.PlaybackState.PlayingState:
@@ -410,10 +484,13 @@ class MainWindow(QDialog, Ui_Dialog):
             self.player_stem.play()
         else:
             faixa = self.combo_stems.currentText()
-            stem_file = Path(self.path_stems_dir) / f"{faixa}.wav"
+            stem_file = Path(self.path_stems_dir) / f"{faixa}.wav" if self.path_stems_dir else Path(self.path_guitarra)
             if not stem_file.exists():
-                QMessageBox.warning(self, "Arquivo não encontrado", f"A faixa '{faixa}.wav' não foi encontrada.")
-                return
+                if self.path_guitarra and Path(self.path_guitarra).exists():
+                    stem_file = Path(self.path_guitarra)
+                else:
+                    QMessageBox.warning(self, "Arquivo não encontrado", f"A faixa '{faixa}.wav' não foi encontrada.")
+                    return
             self.player_stem.setSource(QUrl.fromLocalFile(str(stem_file)))
             self.player_stem.play()
 
