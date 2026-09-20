@@ -6,13 +6,13 @@
    <rect>
     <x>0</x>
     <y>0</y>
-    <width>900</width>
+    <width>920</width>
     <height>640</height>
    </rect>
   </property>
   <property name="minimumSize">
    <size>
-    <width>760</width>
+    <width>780</width>
     <height>540</height>
    </size>
   </property>
@@ -82,6 +82,19 @@
        </widget>
       </item>
       <item>
+       <widget class="QPushButton" name="btn_record">
+        <property name="maximumSize">
+         <size>
+          <width>220</width>
+          <height>16777215</height>
+         </size>
+        </property>
+        <property name="text">
+         <string>🎙  Gravar Entrada (ESP / Mic)…</string>
+        </property>
+       </widget>
+      </item>
+      <item>
        <widget class="QProgressBar" name="progress_bar">
         <property name="minimumSize">
          <size>
@@ -119,18 +132,6 @@
    <item>
     <layout class="QHBoxLayout" name="bodyLayout">
      <property name="spacing">
-      <number>0</number>
-     </property>
-     <property name="leftMargin">
-      <number>0</number>
-     </property>
-     <property name="topMargin">
-      <number>0</number>
-     </property>
-     <property name="rightMargin">
-      <number>0</number>
-     </property>
-     <property name="bottomMargin">
       <number>0</number>
      </property>
      <item>
@@ -215,7 +216,7 @@
          </widget>
         </item>
         <item>
-         <spacer name="leftSpacer">
+         <spacer name="spacerLeft">
           <property name="orientation">
            <enum>Qt::Orientation::Vertical</enum>
           </property>
@@ -233,18 +234,6 @@
      <item>
       <layout class="QVBoxLayout" name="rightLayout">
        <property name="spacing">
-        <number>0</number>
-       </property>
-       <property name="leftMargin">
-        <number>0</number>
-       </property>
-       <property name="topMargin">
-        <number>0</number>
-       </property>
-       <property name="rightMargin">
-        <number>0</number>
-       </property>
-       <property name="bottomMargin">
         <number>0</number>
        </property>
        <item>
@@ -630,7 +619,7 @@
        </widget>
       </item>
       <item>
-       <spacer name="statusSpacer">
+       <spacer name="spacerStatus">
         <property name="orientation">
          <enum>Qt::Orientation::Horizontal</enum>
         </property>

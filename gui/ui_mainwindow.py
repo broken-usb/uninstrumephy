@@ -12,8 +12,8 @@ from PyQt6 import QtCore, QtGui, QtWidgets
 class Ui_Dialog(object):
     def setupUi(self, Dialog):
         Dialog.setObjectName("Dialog")
-        Dialog.resize(900, 640)
-        Dialog.setMinimumSize(QtCore.QSize(760, 540))
+        Dialog.resize(920, 640)
+        Dialog.setMinimumSize(QtCore.QSize(780, 540))
         self.mainLayout = QtWidgets.QVBoxLayout(Dialog)
         self.mainLayout.setContentsMargins(0, 0, 0, 0)
         self.mainLayout.setSpacing(0)
@@ -31,6 +31,10 @@ class Ui_Dialog(object):
         self.btn_load.setMaximumSize(QtCore.QSize(240, 16777215))
         self.btn_load.setObjectName("btn_load")
         self.headerLayout.addWidget(self.btn_load)
+        self.btn_record = QtWidgets.QPushButton(parent=self.frameHeader)
+        self.btn_record.setMaximumSize(QtCore.QSize(220, 16777215))
+        self.btn_record.setObjectName("btn_record")
+        self.headerLayout.addWidget(self.btn_record)
         self.progress_bar = QtWidgets.QProgressBar(parent=self.frameHeader)
         self.progress_bar.setMinimumSize(QtCore.QSize(80, 0))
         self.progress_bar.setMaximumSize(QtCore.QSize(120, 6))
@@ -44,7 +48,6 @@ class Ui_Dialog(object):
         self.headerLayout.addWidget(self.lbl_filepath)
         self.mainLayout.addWidget(self.frameHeader)
         self.bodyLayout = QtWidgets.QHBoxLayout()
-        self.bodyLayout.setContentsMargins(0, 0, 0, 0)
         self.bodyLayout.setSpacing(0)
         self.bodyLayout.setObjectName("bodyLayout")
         self.frameLeft = QtWidgets.QFrame(parent=Dialog)
@@ -77,7 +80,6 @@ class Ui_Dialog(object):
         self.leftLayout.addItem(spacerItem)
         self.bodyLayout.addWidget(self.frameLeft)
         self.rightLayout = QtWidgets.QVBoxLayout()
-        self.rightLayout.setContentsMargins(0, 0, 0, 0)
         self.rightLayout.setSpacing(0)
         self.rightLayout.setObjectName("rightLayout")
         self.frameInfo = QtWidgets.QFrame(parent=Dialog)
@@ -245,6 +247,7 @@ class Ui_Dialog(object):
         _translate = QtCore.QCoreApplication.translate
         Dialog.setWindowTitle(_translate("Dialog", "Tone Matcher"))
         self.btn_load.setText(_translate("Dialog", "＋  Carregar Música de Referência…"))
+        self.btn_record.setText(_translate("Dialog", "🎙  Gravar Entrada (ESP / Mic)…"))
         self.lbl_filepath.setText(_translate("Dialog", "Nenhum arquivo selecionado."))
         self.lbl_cover.setText(_translate("Dialog", "♪"))
         self.lbl_metadata.setText(_translate("Dialog", "Nenhuma informação disponível."))
@@ -262,3 +265,13 @@ class Ui_Dialog(object):
         self.lbl_status.setText(_translate("Dialog", "● Status: Aguardando…"))
         self.lbl_gate.setText(_translate("Dialog", "Noise Gate: -- dB"))
         self.lbl_eq.setText(_translate("Dialog", "EQ — Bass: --  |  Mid: --  |  Treble: --"))
+
+
+if __name__ == "__main__":
+    import sys
+    app = QtWidgets.QApplication(sys.argv)
+    Dialog = QtWidgets.QDialog()
+    ui = Ui_Dialog()
+    ui.setupUi(Dialog)
+    Dialog.show()
+    sys.exit(app.exec())
