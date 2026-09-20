@@ -15,11 +15,9 @@ logger = logging.getLogger(__name__)
 
 
 class AnalysisWorker(QThread):
-    """Executa o Tone Matching (análise Librosa) em uma thread separada da UI."""
-
     finished = pyqtSignal(dict)
-    error    = pyqtSignal(str)
-    status   = pyqtSignal(str)
+    error = pyqtSignal(str)
+    status = pyqtSignal(str)
 
     def __init__(self, stem_path: str) -> None:
         super().__init__()
@@ -28,44 +26,30 @@ class AnalysisWorker(QThread):
     def run(self) -> None:
         start_time = time.monotonic()
         try:
-            logger.info(f"Iniciando análise: {self.stem_path}")
-            self.status.emit("Extraindo parâmetros matemáticos…")
+            logger.info(f"Iniciando análise avançada: {self.stem_path}")
+            self.status.emit("Extraindo espectro, harmônicos e dinâmica com Librosa…")
 
             params = AudioAnalyzer().analyze_stem(self.stem_path)
             elapsed = time.monotonic() - start_time
 
-            eq = params.get("eq", {})
+            eq4 = params.get("eq_4bands", {})
             logger.info(
                 f"Análise concluída em {elapsed:.2f}s. "
                 f"Gate: {params.get('noise_gate_threshold_db')} dB | "
-                f"EQ (bass/mid/treble): "
-                f"{eq.get('bass')}/{eq.get('mid')}/{eq.get('treble')} | "
-                f"Silencioso: {params.get('is_silent')}"
+                f"EQ 4B: {eq4} | Centroid: {params.get('spectral_centroid_hz')} Hz"
             )
             self.finished.emit(params)
 
         except Exception:
-            logger.exception("Erro durante análise.")
+            logger.exception("Erro durante análise de Tone Matching.")
             self.error.emit(traceback.format_exc())
 
 
 class TabToneMatching(QWidget, Ui_TabToneMatching):
-    """
-    Aba de Tone Matching: dispara a análise Librosa do stem selecionado
-    e exibe os resultados (gate, EQ, gráficos de forma de onda, curva de
-    EQ e brilho/spectral centroid).
-
-    Sinais emitidos para o main_gui.py orquestrar o restante da aplicação:
-        analysis_started()             — análise disparada
-        analysis_finished(dict, str)   — (params, stem_name analisado)
-        analysis_error(str)            — mensagem de erro
-        status_message(str)            — texto para a barra de status
-    """
-
-    analysis_started  = pyqtSignal()
+    analysis_started = pyqtSignal()
     analysis_finished = pyqtSignal(dict, str)
-    analysis_error    = pyqtSignal(str)
-    status_message     = pyqtSignal(str)
+    analysis_error = pyqtSignal(str)
+    status_message = pyqtSignal(str)
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
@@ -87,33 +71,21 @@ class TabToneMatching(QWidget, Ui_TabToneMatching):
 
         self.btn_run_analysis.clicked.connect(self.start_analysis)
 
-    # API pública, chamada pelo main_gui.py
-
     def set_selected_stem(self, stem_name: str, stem_path: str) -> None:
-        """
-        Define qual stem está atualmente selecionado no combo compartilhado.
-
-        Se o stem for diferente do último analisado, invalida os
-        resultados exibidos (gráficos e labels), pois eles passam a se
-        referir a uma faixa diferente da selecionada.
-        """
         self.stem_name = stem_name
         self.stem_path = stem_path
         self.btn_run_analysis.setEnabled(bool(stem_path))
 
         if stem_name and stem_name != self.last_analyzed_stem and self.last_analyzed_stem:
             logger.debug(
-                f"Stem selecionado ('{stem_name}') difere do último "
-                f"analisado ('{self.last_analyzed_stem}'); limpando resultados."
+                f"Stem selecionado ('{stem_name}') difere do último analisado ('{self.last_analyzed_stem}'). Limpando."
             )
             self.clear_results()
             self.status_message.emit(
-                f"Faixa alterada para '{stem_name}' — execute o Tone "
-                f"Matching novamente para esta faixa."
+                f"Faixa alterada para '{stem_name}' — execute o Tone Matching para atualizar os parâmetros."
             )
 
     def reset(self) -> None:
-        """Reseta o estado da aba (ex.: ao carregar um novo arquivo)."""
         self.stem_path = ""
         self.stem_name = ""
         self.last_analyzed_stem = ""
@@ -130,19 +102,16 @@ class TabToneMatching(QWidget, Ui_TabToneMatching):
     def set_busy(self, busy: bool) -> None:
         self.btn_run_analysis.setEnabled(not busy and bool(self.stem_path))
 
-    # Lógica interna
-
     def start_analysis(self) -> None:
         if not self.stem_path:
             logger.warning("Tentativa de iniciar análise sem stem selecionado.")
             return
 
-        logger.info(f"Iniciando workflow análise (faixa selecionada: {self.stem_name}).")
+        logger.info(f"Disparando análise de Tone Matching: {self.stem_name}")
         self.set_busy(True)
         self.analysis_started.emit()
 
         self._analyzing_stem = self.stem_name
-
         self.analysis_thread = AnalysisWorker(self.stem_path)
         self.analysis_thread.status.connect(self.status_message.emit)
         self.analysis_thread.finished.connect(self._on_finished)
@@ -150,21 +119,29 @@ class TabToneMatching(QWidget, Ui_TabToneMatching):
         self.analysis_thread.start()
 
     def _on_finished(self, params: dict) -> None:
-        logger.info("Workflow análise finalizado.")
+        logger.info("Análise Librosa finalizada com sucesso.")
         self.last_analyzed_stem = getattr(self, "_analyzing_stem", "")
         self.set_busy(False)
 
         gate = params.get("noise_gate_threshold_db", "--")
-        eq   = params.get("eq", {})
+        eq4 = params.get("eq_4bands", {})
         eq_curve = params.get("eq_curve", [])
         waveform = params.get("waveform", {})
         centroid_hz = params.get("spectral_centroid_hz", 0.0)
         centroid_curve = params.get("spectral_centroid_curve", [])
+        overdrive = params.get("overdrive", {})
+        comp = params.get("compressor", {})
 
-        self.lbl_analyzed_stem.setText(
-            f"Parâmetros calculados a partir da faixa: '{self.last_analyzed_stem}'"
-            + (f"  —  Brilho médio: {centroid_hz:.0f} Hz" if centroid_hz else "")
+        # Resumo legível na interface contendo múltiplos dados calculados
+        summary_text = (
+            f"Faixa: '{self.last_analyzed_stem}' | "
+            f"Gate: {gate} dB | "
+            f"EQ: [100Hz: {eq4.get('low_db', 0):+d}dB, 500Hz: {eq4.get('mid1_db', 0):+d}dB, "
+            f"1.5kHz: {eq4.get('mid2_db', 0):+d}dB, 4.5kHz: {eq4.get('high_db', 0):+d}dB] | "
+            f"Brilho (Tone): {overdrive.get('tone_pct', 50)}% ({centroid_hz:.0f} Hz) | "
+            f"Perfil: {'Saturado/Overdrive' if overdrive.get('suggested_active') else 'Limpo/Dinâmico'}"
         )
+        self.lbl_analyzed_stem.setText(summary_text)
 
         self.waveform_plot.plot_waveform(waveform, label=self.last_analyzed_stem)
         self.eq_curve_plot.plot_eq_curve(eq_curve, label=self.last_analyzed_stem)
@@ -180,7 +157,6 @@ class TabToneMatching(QWidget, Ui_TabToneMatching):
         self.analysis_error.emit(err_msg)
 
     def stop_thread(self) -> None:
-        """Encerra a thread de análise, se estiver rodando (usado no closeEvent)."""
         if self.analysis_thread is not None and self.analysis_thread.isRunning():
             self.analysis_thread.quit()
             self.analysis_thread.wait(2000)

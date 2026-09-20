@@ -64,17 +64,13 @@ class TabHardware(QWidget, Ui_TabHardware):
     send_error = pyqtSignal(str)
     status_message = pyqtSignal(str)
 
-    TONE_MATCHING_GATE_KEY = "gate"
-    TONE_MATCHING_GATE_PARAM = "gate_threshold"
-    TONE_MATCHING_EQ_KEY = "eq"
-
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setupUi(self)
 
         self.hardware_thread: HardwareWorker | None = None
 
-        # Monta dinamicamente os 12 EffectWidgets dentro da scroll area
+        # Constrói dinamicamente os 12 EffectWidgets dentro do container com rolagem
         self.effect_widgets: dict[str, EffectWidget] = {}
         for spec in EFFECT_SPECS:
             widget = EffectWidget(spec)
@@ -87,17 +83,15 @@ class TabHardware(QWidget, Ui_TabHardware):
         self.btn_delete_preset.clicked.connect(self._on_delete_preset_clicked)
         self._refresh_presets_combo()
 
-        # Limpa anotação de Tone Matching se houver ajuste manual
-        gate_w = self.effect_widgets.get(self.TONE_MATCHING_GATE_KEY)
-        if gate_w is not None:
-            gate_w.changed.connect(self._clear_source_label)
+        # Monitora ajustes manuais para atualizar aviso de origem
+        for key in ("gate", "eq", "overdrive", "comp"):
+            w = self.effect_widgets.get(key)
+            if w is not None:
+                w.changed.connect(self._on_effect_manually_changed)
 
-        eq_w = self.effect_widgets.get(self.TONE_MATCHING_EQ_KEY)
-        if eq_w is not None:
-            eq_w.changed.connect(self._clear_source_label)
-
-    def _clear_source_label(self) -> None:
-        self.lbl_gate_source.setText("(ajustado manualmente)")
+    def _on_effect_manually_changed(self) -> None:
+        if not getattr(self, "_applying_tone_matching", False):
+            self.lbl_gate_source.setText("(ajustado manualmente pelo usuário)")
 
     def _refresh_presets_combo(self) -> None:
         current = self.combo_presets.currentText()
@@ -130,7 +124,7 @@ class TabHardware(QWidget, Ui_TabHardware):
         index = self.combo_presets.findText(name.strip())
         if index >= 0:
             self.combo_presets.setCurrentIndex(index)
-        self.status_message.emit(f"Preset '{name.strip()}' salvo com sucesso.")
+        self.status_message.emit(f"Preset '{name.strip()}' salvo.")
 
     def _on_load_preset_clicked(self) -> None:
         name = self.combo_presets.currentText()
@@ -144,13 +138,12 @@ class TabHardware(QWidget, Ui_TabHardware):
             QMessageBox.critical(self, "Erro ao carregar preset", str(exc))
             return
 
-        self.lbl_gate_source.setText("(carregado do preset)")
+        self.lbl_gate_source.setText("(carregado do preset local)")
         if warnings:
             QMessageBox.warning(
                 self,
                 "Preset carregado com ressalvas",
-                "Alguns parâmetros foram ignorados por incompatibilidade:\n\n"
-                + "\n".join(f"• {w}" for w in warnings),
+                "Alguns parâmetros foram ignorados:\n\n" + "\n".join(f"• {w}" for w in warnings),
             )
         self.status_message.emit(f"Preset '{name}' carregado.")
 
@@ -175,44 +168,68 @@ class TabHardware(QWidget, Ui_TabHardware):
 
     def set_params(self, params: dict) -> None:
         """
-        Preenche os parâmetros calculados pelo Tone Matching (Noise Gate e EQ 4-bandas).
+        Preenche múltiplos efeitos a partir dos dados extraídos pelo Tone Matching:
+          1. Noise Gate (Threshold dB)
+          2. Equalizador de 4 Bandas (Ganhos em 100Hz, 500Hz, 1.5kHz, 4.5kHz)
+          3. Overdrive (Tone ajustado ao Spectral Centroid e Drive sugerido)
+          4. Compressor (Threshold e Ratio sugeridos se houver faixa dinâmica ampla)
         """
         if not params:
             return
 
-        updated_items = []
+        self._applying_tone_matching = True
+        updated_modules = []
 
-        # 1. Noise Gate
-        gate_db = params.get("noise_gate_threshold_db")
-        gate_widget = self.effect_widgets.get(self.TONE_MATCHING_GATE_KEY)
-        if gate_db is not None and gate_widget is not None:
-            gate_widget.set_param_value(self.TONE_MATCHING_GATE_PARAM, round(gate_db))
-            gate_widget.set_active(True)
-            updated_items.append("Gate")
+        try:
+            # 1. Noise Gate
+            gate_db = params.get("noise_gate_threshold_db")
+            gate_widget = self.effect_widgets.get("gate")
+            if gate_db is not None and gate_widget is not None:
+                gate_widget.set_param_value("gate_threshold", round(gate_db))
+                gate_widget.set_active(True)
+                updated_modules.append("Noise Gate")
 
-        # 2. Equalizador 4 Bandas
-        eq_data = params.get("eq", {})
-        eq_widget = self.effect_widgets.get(self.TONE_MATCHING_EQ_KEY)
-        if eq_data and eq_widget is not None:
-            bass = eq_data.get("bass", 3.33)
-            mid = eq_data.get("mid", 3.33)
-            treble = eq_data.get("treble", 3.33)
+            # 2. Equalizador 4 Bandas
+            eq_4b = params.get("eq_4bands", {})
+            eq_widget = self.effect_widgets.get("eq")
+            if eq_4b and eq_widget is not None:
+                eq_widget.set_param_value("eq_low_gain", eq_4b.get("low_db", 0))
+                eq_widget.set_param_value("eq_mid1_gain", eq_4b.get("mid1_db", 0))
+                eq_widget.set_param_value("eq_mid2_gain", eq_4b.get("mid2_db", 0))
+                eq_widget.set_param_value("eq_high_gain", eq_4b.get("high_db", 0))
+                eq_widget.set_active(True)
+                updated_modules.append("EQ (4 Bandas)")
 
-            # Mapeamento do balanço de energia espectral para dB (-12 dB a +12 dB)
-            low_db = max(-12, min(12, round((bass - 3.33) * 2.5)))
-            mid1_db = max(-12, min(12, round((mid - 3.33) * 2.5)))
-            mid2_db = max(-12, min(12, round((mid - 3.33) * 2.0)))
-            high_db = max(-12, min(12, round((treble - 3.33) * 2.5)))
+            # 3. Overdrive (Tone e Saturação)
+            od_data = params.get("overdrive", {})
+            od_widget = self.effect_widgets.get("overdrive")
+            if od_data and od_widget is not None:
+                tone_val = od_data.get("tone_pct", 50)
+                od_widget.set_param_value("dist_tone", tone_val)
+                if od_data.get("suggested_active", False):
+                    od_widget.set_param_value("dist_drive", od_data.get("drive_pct", 35))
+                    od_widget.set_active(True)
+                    updated_modules.append("Overdrive (Ativo)")
+                else:
+                    updated_modules.append("Overdrive (Tone)")
 
-            eq_widget.set_param_value("eq_low_gain", low_db)
-            eq_widget.set_param_value("eq_mid1_gain", mid1_db)
-            eq_widget.set_param_value("eq_mid2_gain", mid2_db)
-            eq_widget.set_param_value("eq_high_gain", high_db)
-            eq_widget.set_active(True)
-            updated_items.append("EQ")
+            # 4. Compressor
+            comp_data = params.get("compressor", {})
+            comp_widget = self.effect_widgets.get("comp")
+            if comp_data and comp_widget is not None:
+                comp_widget.set_param_value("comp_threshold", comp_data.get("threshold_pct", 40))
+                ratio_val = round(comp_data.get("ratio", 3.0) * 10.0)
+                comp_widget.set_param_value("comp_ratio", ratio_val)
+                if comp_data.get("suggested_active", False):
+                    comp_widget.set_active(True)
+                    updated_modules.append("Compressor")
 
-        if updated_items:
-            self.lbl_gate_source.setText(f"({ ' e '.join(updated_items) } preenchido(s) a partir do Tone Matching)")
+            if updated_modules:
+                self.lbl_gate_source.setText(
+                    f"● Módulos configurados pelo Tone Matching: {', '.join(updated_modules)}."
+                )
+        finally:
+            self._applying_tone_matching = False
 
     def reset(self) -> None:
         self.lbl_gate_source.setText("")
@@ -225,7 +242,7 @@ class TabHardware(QWidget, Ui_TabHardware):
 
     def start_send_hardware(self) -> None:
         state = self._build_pedal_state()
-        logger.info(f"Enviando estado para a ESP32-S3: {state!r}")
+        logger.info(f"Disparando transmissão completa do PedalState: {state!r}")
         self.btn_send_hardware.setEnabled(False)
         self.send_started.emit()
 
@@ -241,8 +258,8 @@ class TabHardware(QWidget, Ui_TabHardware):
             QMessageBox.information(
                 self,
                 "Envio simulado (Modo MOCK)",
-                "Nenhuma ESP32-S3 conectada via USB foi detectada.\n\n"
-                "O pacote binário de 140 bytes com COBS foi gerado e simulado com sucesso.",
+                "Nenhuma ESP32-S3 física detectada na porta serial.\n\n"
+                "O pacote binário consolidado (140 bytes via COBS) foi codificado e simulado com sucesso.",
             )
         self.send_finished.emit(was_mock)
 
