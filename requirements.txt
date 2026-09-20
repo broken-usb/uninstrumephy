@@ -90,7 +90,7 @@ threadpoolctl==3.6.0
 tinytag==2.2.1
 torch==2.13.0
 torchaudio==2.11.0
-torchcodec==0.15.0
+torchcodec==0.16.0
 tqdm==4.69.0
 treetable==0.2.6
 triton==3.7.1
