@@ -13,36 +13,29 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import QThread, pyqtSignal, QUrl, Qt, QTimer
 from PyQt6.QtGui import QPixmap, QImage
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
-from PyQt6 import uic
 
 from tinytag import TinyTag
 
+from core.logger import setup_logging
+from gui.ui_mainwindow import Ui_Dialog
 from gui.tab_demucs import TabDemucs
 from gui.tab_tonematching import TabToneMatching
 from gui.tab_hardware import TabHardware
 
-# Configuração de Logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s -> %(message)s",
-)
+# Inicialização do Logging (console + output/logs/latest-log.txt)
+setup_logging()
 logger = logging.getLogger(__name__)
-
-# Carregamento dinâmico da interface a partir do arquivo .ui
-UI_MAIN_PATH = Path(__file__).resolve().parent / "gui" / "mainwindow.ui"
-Ui_MainWindowForm, _ = uic.loadUiType(str(UI_MAIN_PATH))
 
 
 def global_exception_hook(exctype, value, tb):
-    """Intercepta falhas em slots do PyQt para evitar fechamento súbito (core dump)."""
+    """Intercepta exceções não tratadas em slots do Qt para evitar core dump."""
     err_str = "".join(traceback.format_exception(exctype, value, tb))
     logger.critical(f"Exceção não tratada capturada:\n{err_str}")
-    
-    # Mostra mensagem na tela se a interface já estiver rodando
+
     if QApplication.instance():
         msg = QMessageBox()
         msg.setIcon(QMessageBox.Icon.Critical)
-        msg.setWindowTitle("Erro Inesperado")
+        msg.setWindowTitle("Erro Crítico")
         msg.setText("Ocorreu um erro interno na aplicação.")
         msg.setDetailedText(err_str)
         msg.exec()
@@ -95,7 +88,7 @@ class MetadataWorker(QThread):
             self.error.emit(traceback.format_exc())
 
 
-class MainWindow(QDialog, Ui_MainWindowForm):
+class MainWindow(QDialog, Ui_Dialog):
     def __init__(self) -> None:
         super().__init__()
         self.setupUi(self)
@@ -179,19 +172,11 @@ class MainWindow(QDialog, Ui_MainWindowForm):
         self.audio_out_stem.setVolume(self.slider_vol_stem.value() / 100.0)
 
     def open_record_dialog(self) -> None:
-        """Abre o diálogo para captura direta da ESP32-S3 ou microfone."""
+        """Abre o diálogo para capturar áudio direto da ESP32-S3 ou microfone."""
         try:
             from gui.dialog_record import DialogRecord as RecordDialog
         except ImportError:
-            try:
-                from gui.dialog_record import RecordDialog
-            except ImportError as exc:
-                QMessageBox.critical(
-                    self,
-                    "Erro de Carregamento",
-                    f"Não foi possível encontrar a classe do diálogo em 'gui/dialog_record.py':\n{exc}",
-                )
-                return
+            from gui.dialog_record import RecordDialog
 
         dlg = RecordDialog(self)
         if hasattr(dlg, "recording_finished"):
@@ -199,7 +184,7 @@ class MainWindow(QDialog, Ui_MainWindowForm):
         dlg.exec()
 
     def load_direct_audio(self, filepath: str, auto_run_tonematching: bool = False) -> None:
-        """Carrega áudio direto da guitarra, ignorando o Demucs."""
+        """Carrega a gravação direta da guitarra, ignorando o Demucs."""
         if not filepath or not Path(filepath).exists():
             return
 
@@ -341,7 +326,12 @@ class MainWindow(QDialog, Ui_MainWindowForm):
                 if img.loadFromData(image_data):
                     pixmap = QPixmap.fromImage(img)
                     self.lbl_cover.setPixmap(
-                        pixmap.scaled(180, 180, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                        pixmap.scaled(
+                            180,
+                            180,
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation,
+                        )
                     )
                     self.lbl_cover.setText("")
                 else:
@@ -367,7 +357,10 @@ class MainWindow(QDialog, Ui_MainWindowForm):
         self.btn_load.setEnabled(False)
         self.btn_record.setEnabled(False)
         self.progress_bar.setRange(0, 0)
-        self._notify("Separação de faixas iniciada", f"Processando '{Path(self.path_original).name}' com o Demucs…")
+        self._notify(
+            "Separação de faixas iniciada",
+            f"Processando '{Path(self.path_original).name}' com o Demucs…",
+        )
 
     def _on_demucs_finished(self, guitar_path: str, stems_dir: str) -> None:
         self.path_guitarra = guitar_path
@@ -467,7 +460,11 @@ class MainWindow(QDialog, Ui_MainWindowForm):
         self.btn_load.setEnabled(True)
         self.btn_record.setEnabled(True)
         self._set_status("Erro ao enviar para a pedaleira.")
-        self._notify("Falha no envio", self._friendly_error_summary(err_msg), icon=QSystemTrayIcon.MessageIcon.Critical)
+        self._notify(
+            "Falha no envio",
+            self._friendly_error_summary(err_msg),
+            icon=QSystemTrayIcon.MessageIcon.Critical,
+        )
 
     def _on_worker_error(self, err_msg: str) -> None:
         self.progress_bar.setRange(0, 100)
@@ -514,12 +511,18 @@ class MainWindow(QDialog, Ui_MainWindowForm):
             self.player_stem.play()
         else:
             faixa = self.combo_stems.currentText()
-            stem_file = Path(self.path_stems_dir) / f"{faixa}.wav" if self.path_stems_dir else Path(self.path_guitarra)
+            stem_file = (
+                Path(self.path_stems_dir) / f"{faixa}.wav"
+                if self.path_stems_dir
+                else Path(self.path_guitarra)
+            )
             if not stem_file.exists():
                 if self.path_guitarra and Path(self.path_guitarra).exists():
                     stem_file = Path(self.path_guitarra)
                 else:
-                    QMessageBox.warning(self, "Arquivo não encontrado", f"A faixa '{faixa}.wav' não foi encontrada.")
+                    QMessageBox.warning(
+                        self, "Arquivo não encontrado", f"A faixa '{faixa}.wav' não foi encontrada."
+                    )
                     return
             self.player_stem.setSource(QUrl.fromLocalFile(str(stem_file.resolve())))
             self.player_stem.play()
@@ -560,7 +563,12 @@ class MainWindow(QDialog, Ui_MainWindowForm):
         logger.info(msg)
         self.lbl_status.setText(f"● {msg}")
 
-    def _notify(self, title: str, message: str, icon=QSystemTrayIcon.MessageIcon.Information) -> None:
+    def _notify(
+        self,
+        title: str,
+        message: str,
+        icon: QSystemTrayIcon.MessageIcon = QSystemTrayIcon.MessageIcon.Information,
+    ) -> None:
         if QSystemTrayIcon.isSystemTrayAvailable():
             self.tray_icon.showMessage(title, message, icon, 4000)
 
