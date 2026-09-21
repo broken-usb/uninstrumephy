@@ -13,19 +13,42 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import QThread, pyqtSignal, QUrl, Qt, QTimer
 from PyQt6.QtGui import QPixmap, QImage
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
+from PyQt6 import uic
 
 from tinytag import TinyTag
 
-from gui.ui_mainwindow import Ui_Dialog
 from gui.tab_demucs import TabDemucs
 from gui.tab_tonematching import TabToneMatching
 from gui.tab_hardware import TabHardware
 
+# Configuração de Logging
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(levelname)s] %(name)s -> %(message)s",
 )
 logger = logging.getLogger(__name__)
+
+# Carregamento dinâmico da interface a partir do arquivo .ui
+UI_MAIN_PATH = Path(__file__).resolve().parent / "gui" / "mainwindow.ui"
+Ui_MainWindowForm, _ = uic.loadUiType(str(UI_MAIN_PATH))
+
+
+def global_exception_hook(exctype, value, tb):
+    """Intercepta falhas em slots do PyQt para evitar fechamento súbito (core dump)."""
+    err_str = "".join(traceback.format_exception(exctype, value, tb))
+    logger.critical(f"Exceção não tratada capturada:\n{err_str}")
+    
+    # Mostra mensagem na tela se a interface já estiver rodando
+    if QApplication.instance():
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Icon.Critical)
+        msg.setWindowTitle("Erro Inesperado")
+        msg.setText("Ocorreu um erro interno na aplicação.")
+        msg.setDetailedText(err_str)
+        msg.exec()
+
+
+sys.excepthook = global_exception_hook
 
 
 class MetadataWorker(QThread):
@@ -72,7 +95,7 @@ class MetadataWorker(QThread):
             self.error.emit(traceback.format_exc())
 
 
-class MainWindow(QDialog, Ui_Dialog):
+class MainWindow(QDialog, Ui_MainWindowForm):
     def __init__(self) -> None:
         super().__init__()
         self.setupUi(self)
@@ -156,17 +179,30 @@ class MainWindow(QDialog, Ui_Dialog):
         self.audio_out_stem.setVolume(self.slider_vol_stem.value() / 100.0)
 
     def open_record_dialog(self) -> None:
-        """Abre o diálogo para capturar áudio direto da ESP32-S3 ou microfone."""
-        from gui.dialog_record import RecordDialog
+        """Abre o diálogo para captura direta da ESP32-S3 ou microfone."""
+        try:
+            from gui.dialog_record import DialogRecord as RecordDialog
+        except ImportError:
+            try:
+                from gui.dialog_record import RecordDialog
+            except ImportError as exc:
+                QMessageBox.critical(
+                    self,
+                    "Erro de Carregamento",
+                    f"Não foi possível encontrar a classe do diálogo em 'gui/dialog_record.py':\n{exc}",
+                )
+                return
+
         dlg = RecordDialog(self)
-        dlg.recording_finished.connect(self.load_direct_audio)
+        if hasattr(dlg, "recording_finished"):
+            dlg.recording_finished.connect(self.load_direct_audio)
         dlg.exec()
 
     def load_direct_audio(self, filepath: str, auto_run_tonematching: bool = False) -> None:
-        """
-        Carrega a gravação direta da guitarra, ignorando o Demucs e
-        preparando a aba de Tone Matching de forma imediata.
-        """
+        """Carrega áudio direto da guitarra, ignorando o Demucs."""
+        if not filepath or not Path(filepath).exists():
+            return
+
         logger.info(f"Carregando áudio de entrada direta: {filepath}")
         self.path_original = filepath
         self.path_guitarra = filepath
@@ -174,9 +210,6 @@ class MainWindow(QDialog, Ui_Dialog):
 
         try:
             self.player_orig.stop()
-        except RuntimeError:
-            pass
-        try:
             self.player_stem.stop()
         except RuntimeError:
             pass
@@ -210,7 +243,6 @@ class MainWindow(QDialog, Ui_Dialog):
         self.tab_tonematching.reset()
         self.tab_tonematching.set_selected_stem("guitar", filepath)
 
-        # Alterna para a aba de Tone Matching
         self.tabsMain.setCurrentWidget(self.tab_tonematching)
 
         self._set_status("Gravação da ESP32/Microfone carregada com sucesso! Demucs ignorado.")
@@ -231,22 +263,17 @@ class MainWindow(QDialog, Ui_Dialog):
 
         file_path_obj = Path(file_name)
         try:
-            file_size_bytes = file_path_obj.stat().st_size
+            if file_path_obj.stat().st_size == 0:
+                QMessageBox.warning(self, "Arquivo vazio", "O arquivo selecionado possui 0 bytes.")
+                return
         except OSError as exc:
             QMessageBox.critical(self, "Arquivo inacessível", str(exc))
-            return
-
-        if file_size_bytes == 0:
-            QMessageBox.warning(self, "Arquivo vazio", "O arquivo selecionado possui 0 bytes.")
             return
 
         self.path_original = file_name
 
         try:
             self.player_orig.stop()
-        except RuntimeError:
-            pass
-        try:
             self.player_stem.stop()
         except RuntimeError:
             pass
@@ -268,7 +295,9 @@ class MainWindow(QDialog, Ui_Dialog):
 
         self.metadata_thread = MetadataWorker(file_name)
         self.metadata_thread.finished.connect(self._on_metadata_finished)
+        self.metadata_thread.finished.connect(self.metadata_thread.deleteLater)
         self.metadata_thread.error.connect(self._on_metadata_error)
+        self.metadata_thread.error.connect(self.metadata_thread.deleteLater)
         self.metadata_thread.start()
 
         self.btn_play_orig.setEnabled(False)
@@ -379,9 +408,9 @@ class MainWindow(QDialog, Ui_Dialog):
         if stem_name and self.path_stems_dir:
             candidate = Path(self.path_stems_dir) / f"{stem_name}.wav"
             if candidate.exists():
-                stem_path = str(candidate)
+                stem_path = str(candidate.resolve())
         elif stem_name and self.path_guitarra:
-            stem_path = self.path_guitarra
+            stem_path = str(Path(self.path_guitarra).resolve())
         self.tab_tonematching.set_selected_stem(stem_name, stem_path)
 
     def _on_analysis_started(self) -> None:
@@ -462,7 +491,8 @@ class MainWindow(QDialog, Ui_Dialog):
         elif state == QMediaPlayer.PlaybackState.PausedState:
             self.player_orig.play()
         else:
-            self.player_orig.setSource(QUrl.fromLocalFile(self.path_original))
+            abs_path = str(Path(self.path_original).resolve())
+            self.player_orig.setSource(QUrl.fromLocalFile(abs_path))
             self.player_orig.play()
 
     def stop_original(self) -> None:
@@ -491,7 +521,7 @@ class MainWindow(QDialog, Ui_Dialog):
                 else:
                     QMessageBox.warning(self, "Arquivo não encontrado", f"A faixa '{faixa}.wav' não foi encontrada.")
                     return
-            self.player_stem.setSource(QUrl.fromLocalFile(str(stem_file)))
+            self.player_stem.setSource(QUrl.fromLocalFile(str(stem_file.resolve())))
             self.player_stem.play()
 
     def stop_stem(self) -> None:
@@ -506,7 +536,8 @@ class MainWindow(QDialog, Ui_Dialog):
     def _on_stem_selection_changed(self, new_stem: str) -> None:
         self.player_stem.stop()
         self._propagate_stem_selection(new_stem)
-        if new_stem and new_stem != self.tab_tonematching.last_analyzed_stem:
+        last_analyzed = getattr(self.tab_tonematching, "last_analyzed_stem", None)
+        if new_stem and new_stem != last_analyzed:
             self.lbl_gate.setText("Noise Gate: -- dB")
             self.lbl_eq.setText("EQ: Low: -- | M1: -- | M2: -- | High: --")
             self.tab_hardware.set_params({})
@@ -552,9 +583,13 @@ class MainWindow(QDialog, Ui_Dialog):
             except RuntimeError:
                 pass
 
-        self.tab_demucs.stop_thread()
-        self.tab_tonematching.stop_thread()
-        self.tab_hardware.stop_threads()
+        if hasattr(self.tab_demucs, "stop_thread"):
+            self.tab_demucs.stop_thread()
+        if hasattr(self.tab_tonematching, "stop_thread"):
+            self.tab_tonematching.stop_thread()
+        if hasattr(self.tab_hardware, "stop_threads"):
+            self.tab_hardware.stop_threads()
+
         event.accept()
 
 
