@@ -5,11 +5,11 @@ Interface gráfica inteligente para **Tone Matching** (casamento de timbres de g
 
 ## Funcionalidades principais
 
-* **Carregamento de Multimédia:** Extração automática de metadados e capa do álbum a partir de ficheiros de áudio locais (MP3, WAV, FLAC, OGG, AAC)[cite: 1].
-* **Reprodutor de Áudio Independente:** Dois motores de reprodução em memória (áudio original vs. faixas isoladas) com barras deslizantes de procura (*seek*) e controlo de volume independentes[cite: 1].
-* **Separação de Faixas por IA:** Integração nativa do modelo **Demucs v4 (htdemucs_6s)** com suporte para aceleração por GPU (NVIDIA CUDA) ou CPU[cite: 1].
+* **Carregamento de Multimédia:** Extração automática de metadados e capa do álbum a partir de ficheiros de áudio locais (MP3, WAV, FLAC, OGG, AAC).
+* **Reprodutor de Áudio Independente:** Dois motores de reprodução em memória (áudio original vs. faixas isoladas) com barras deslizantes de procura (*seek*) e controlo de volume independentes.
+* **Separação de Faixas por IA:** Integração nativa do modelo **Demucs v4 (htdemucs_6s)** com suporte para aceleração por GPU (NVIDIA CUDA) ou CPU.
 * **Entrada Direta e Gravação:** Diálogo de captura de áudio em tempo real via microfone ou interface de som externa, permitindo direcionar o sinal gravado imediatamente para o Tone Matching e contornar a separação do Demucs.
-* **Tone Matching Adaptativo (MIR/DSP):** Extração matemática via **Librosa** da curva de equalização ideal em 4 bandas (Low, Mid 1, Mid 2 e High) e cálculo automático do limiar do *Noise Gate*[cite: 1].
+* **Tone Matching Adaptativo (MIR/DSP):** Extração matemática via **Librosa** da curva de equalização ideal em 4 bandas (Low, Mid 1, Mid 2 e High) e cálculo automático do limiar do *Noise Gate*.
 * **Comunicação com Hardware (ESP32-S3):** Transmissão serial do estado completo de parâmetros e blocos de efeitos (pacote estruturado de 140 bytes), com suporte integrado a modo de simulação (*Mock*).
 * **Gestão de Registos (Logging):** Registo simultâneo na consola e em ficheiro de texto, com rotação automática de sessões (`output/logs/latest-log.txt` e `output/logs/previous-log.txt`).
 
