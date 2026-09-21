@@ -265,13 +265,3 @@ class Ui_Dialog(object):
         self.lbl_status.setText(_translate("Dialog", "● Status: Aguardando…"))
         self.lbl_gate.setText(_translate("Dialog", "Noise Gate: -- dB"))
         self.lbl_eq.setText(_translate("Dialog", "EQ — Bass: --  |  Mid: --  |  Treble: --"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    Dialog = QtWidgets.QDialog()
-    ui = Ui_Dialog()
-    ui.setupUi(Dialog)
-    Dialog.show()
-    sys.exit(app.exec())
