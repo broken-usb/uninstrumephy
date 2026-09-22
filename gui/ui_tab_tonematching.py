@@ -66,8 +66,8 @@ class Ui_TabToneMatching(object):
 
     def retranslateUi(self, TabToneMatching):
         _translate = QtCore.QCoreApplication.translate
-        self.lbl_tonematching_title.setText(_translate("TabToneMatching", "📊  Tone Matching (Librosa)"))
-        self.btn_run_analysis.setText(_translate("TabToneMatching", "📊  Executar Tone Matching"))
-        self.tabsToneMatching.setTabText(self.tabsToneMatching.indexOf(self.tabWaveform), _translate("TabToneMatching", "🌊  Forma de Onda"))
-        self.tabsToneMatching.setTabText(self.tabsToneMatching.indexOf(self.tabEqCurve), _translate("TabToneMatching", "🎚  Curva de EQ"))
-        self.tabsToneMatching.setTabText(self.tabsToneMatching.indexOf(self.tabSpectralCentroid), _translate("TabToneMatching", "✨  Brilho (Spectral Centroid)"))
+        self.lbl_tonematching_title.setText(_translate("TabToneMatching", "Tone Matching (Librosa)"))
+        self.btn_run_analysis.setText(_translate("TabToneMatching", "Executar Tone Matching"))
+        self.tabsToneMatching.setTabText(self.tabsToneMatching.indexOf(self.tabWaveform), _translate("TabToneMatching", "Forma de Onda"))
+        self.tabsToneMatching.setTabText(self.tabsToneMatching.indexOf(self.tabEqCurve), _translate("TabToneMatching", "Curva de EQ"))
+        self.tabsToneMatching.setTabText(self.tabsToneMatching.indexOf(self.tabSpectralCentroid), _translate("TabToneMatching", "Brilho (Spectral Centroid)"))

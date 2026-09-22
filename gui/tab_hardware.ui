@@ -34,7 +34,7 @@
       </font>
      </property>
      <property name="text">
-      <string>🔌  Pedal ESP32-S3</string>
+      <string>Pedal ESP32-S3</string>
      </property>
     </widget>
    </item>
@@ -73,21 +73,21 @@
      <item>
       <widget class="QPushButton" name="btn_load_preset">
        <property name="text">
-        <string>📂 Carregar</string>
+        <string>Carregar</string>
        </property>
       </widget>
      </item>
      <item>
       <widget class="QPushButton" name="btn_save_preset">
        <property name="text">
-        <string>💾 Salvar…</string>
+        <string>Salvar…</string>
        </property>
       </widget>
      </item>
      <item>
       <widget class="QPushButton" name="btn_delete_preset">
        <property name="text">
-        <string>🗑 Excluir</string>
+        <string>Excluir</string>
        </property>
       </widget>
      </item>
@@ -200,7 +200,7 @@
       </font>
      </property>
      <property name="text">
-      <string>🔌  Enviar Estado para o Pedal</string>
+      <string>Enviar Estado para o Pedal</string>
      </property>
     </widget>
    </item>

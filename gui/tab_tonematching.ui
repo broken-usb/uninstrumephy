@@ -23,7 +23,7 @@
      <item>
       <widget class="QLabel" name="lbl_tonematching_title">
        <property name="text">
-        <string>📊  Tone Matching (Librosa)</string>
+        <string>Tone Matching (Librosa)</string>
        </property>
       </widget>
      </item>
@@ -46,7 +46,7 @@
         <bool>false</bool>
        </property>
        <property name="text">
-        <string>📊  Executar Tone Matching</string>
+        <string>Executar Tone Matching</string>
        </property>
       </widget>
      </item>
@@ -82,7 +82,7 @@
      </property>
      <widget class="QWidget" name="tabWaveform">
       <attribute name="title">
-       <string>🌊  Forma de Onda</string>
+       <string>Forma de Onda</string>
       </attribute>
       <layout class="QVBoxLayout" name="waveformContainerLayout">
        <property name="leftMargin">
@@ -101,7 +101,7 @@
      </widget>
      <widget class="QWidget" name="tabEqCurve">
       <attribute name="title">
-       <string>🎚  Curva de EQ</string>
+       <string>Curva de EQ</string>
       </attribute>
       <layout class="QVBoxLayout" name="eqCurveContainerLayout">
        <property name="leftMargin">
@@ -120,7 +120,7 @@
      </widget>
      <widget class="QWidget" name="tabSpectralCentroid">
       <attribute name="title">
-       <string>✨  Brilho (Spectral Centroid)</string>
+       <string>Brilho (Spectral Centroid)</string>
       </attribute>
       <layout class="QVBoxLayout" name="spectralCentroidContainerLayout">
        <property name="leftMargin">
