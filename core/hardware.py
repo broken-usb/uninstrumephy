@@ -324,9 +324,25 @@ class ESP32Link:
             logger.info(f"PedalState enviado ({len(packet)} bytes).")
             self._notify(progress_cb, "Envio concluído.")
         except serial.SerialTimeoutException as exc:
+            # A porta pode ter ficado num estado inconsistente (ex.: o
+            # cabo USB caiu no meio da transmissão). Fechamos a conexão
+            # para que a próxima tentativa de envio reabra a porta do
+            # zero, em vez de repetir o mesmo erro indefinidamente.
+            self._reset_connection()
             raise HardwareLinkError(f"Timeout ao comunicar com {self.port}: {exc}") from exc
         except serial.SerialException as exc:
+            self._reset_connection()
             raise HardwareLinkError(f"Falha na transmissão serial: {exc}") from exc
+
+    def _reset_connection(self) -> None:
+        """Fecha a conexão serial atual (se houver) para forçar reabertura no próximo envio."""
+        if self._conn is not None:
+            try:
+                self._conn.close()
+            except serial.SerialException:
+                pass
+            finally:
+                self._conn = None
 
     def close(self) -> None:
         if self._conn is not None and self._conn.is_open:

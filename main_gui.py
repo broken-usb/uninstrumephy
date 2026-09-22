@@ -270,13 +270,17 @@ class MainWindow(QDialog, Ui_Dialog):
         self.lbl_cover.setText("♪")
 
         if self.metadata_thread is not None:
+            # Não bloqueamos a UI esperando a thread antiga terminar:
+            # apenas a desconectamos dos slots (ela seguirá rodando em
+            # segundo plano e se autodestrói via deleteLater ao concluir).
+            # Os handlers `_on_metadata_finished`/`_on_metadata_error` já
+            # ignoram sinais de threads que não são mais a atual.
             try:
-                self.metadata_thread.quit()
-                self.metadata_thread.wait(1000)
-            except RuntimeError:
+                self.metadata_thread.finished.disconnect(self._on_metadata_finished)
+                self.metadata_thread.error.disconnect(self._on_metadata_error)
+            except (RuntimeError, TypeError):
                 pass
-            finally:
-                self.metadata_thread = None
+            self.metadata_thread = None
 
         self.metadata_thread = MetadataWorker(file_name)
         self.metadata_thread.finished.connect(self._on_metadata_finished)
@@ -346,6 +350,16 @@ class MainWindow(QDialog, Ui_Dialog):
         self._set_status("Música carregada.")
 
     def _on_metadata_error(self, err_msg: str) -> None:
+        # Guarda contra corrida: se o usuário trocou de arquivo enquanto
+        # esta MetadataWorker ainda rodava, `self.metadata_thread` já
+        # aponta para uma thread mais nova (ou None). Nesse caso, este
+        # sinal de erro é de uma leitura obsoleta e não deve sobrescrever
+        # os metadados corretos (já carregados ou em carregamento) do
+        # arquivo atual.
+        if self.sender() is not self.metadata_thread:
+            logger.debug("Sinal de erro de metadados obsoleto ignorado (arquivo já trocado).")
+            return
+
         self.lbl_info.setText(f"{Path(self.path_original).stem}  |  --:--")
         self.lbl_metadata.setText("Sem metadados.")
         self.lbl_cover.setText("♪")
