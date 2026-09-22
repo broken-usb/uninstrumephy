@@ -55,7 +55,8 @@ sudo dnf swap ffmpeg-free ffmpeg --allowerasing # RHEL/Fedora, Precisa do RPM Fu
 3. **Clone o repositório:**
 
 ```bash
-git clone [https://github.com/broken-usb/uninstrumephy.git](https://github.com/broken-usb/uninstrumephy.git)
+git clone "https://github.com/broken-usb/uninstrumephy.git"
+
 cd uninstrumephy
 
 ```
