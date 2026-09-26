@@ -19,4 +19,4 @@ pyserial>=3.5
 # Utilitários
 pydantic>=2.13.5
 PyYAML>=6.0.3
-tqdm>=4.66.0
+tqdm>=4.70.1
