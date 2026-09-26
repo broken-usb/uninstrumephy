@@ -1,16 +1,16 @@
 # Interface Gráfica
-PyQt6>=6.6.0
+PyQt6>=6.11.0
 
 # Processamento de Áudio e Separação
-demucs>=4.0.0
+demucs>=4.1.0
 sounddevice>=0.5.0
-soundfile>=0.12.0
+soundfile>=0.14.0
 librosa>=0.10.0
 tinytag>=2.0.0
 
 # Computação Científica e Gráficos
 numpy>=1.26.0
-scipy>=1.12.0
+scipy>=1.18.1
 matplotlib>=3.8.0
 
 # Hardware e Comunicação Serial
@@ -18,5 +18,5 @@ pyserial>=3.5
 
 # Utilitários
 pydantic>=2.13.5
-PyYAML>=6.0
+PyYAML>=6.0.3
 tqdm>=4.66.0
