@@ -3,7 +3,7 @@ PyQt6>=6.11.0
 
 # Processamento de Áudio e Separação
 demucs>=4.1.0
-sounddevice>=0.5.0
+sounddevice>=0.5.6
 soundfile>=0.14.0
 tinytag>=2.3.2
 librosa>=1.0.0
