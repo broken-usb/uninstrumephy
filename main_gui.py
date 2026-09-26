@@ -16,16 +16,32 @@ from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 from tinytag import TinyTag
 
+from core.logger import setup_logging
 from gui.ui_mainwindow import Ui_Dialog
 from gui.tab_demucs import TabDemucs
 from gui.tab_tonematching import TabToneMatching
 from gui.tab_hardware import TabHardware
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s -> %(message)s",
-)
+# Inicialização do Logging (console + output/logs/latest-log.txt)
+setup_logging()
 logger = logging.getLogger(__name__)
+
+
+def global_exception_hook(exctype, value, tb):
+    """Intercepta exceções não tratadas em slots do Qt para evitar core dump."""
+    err_str = "".join(traceback.format_exception(exctype, value, tb))
+    logger.critical(f"Exceção não tratada capturada:\n{err_str}")
+
+    if QApplication.instance():
+        msg = QMessageBox()
+        msg.setIcon(QMessageBox.Icon.Critical)
+        msg.setWindowTitle("Erro Crítico")
+        msg.setText("Ocorreu um erro interno na aplicação.")
+        msg.setDetailedText(err_str)
+        msg.exec()
+
+
+sys.excepthook = global_exception_hook
 
 
 class MetadataWorker(QThread):
@@ -157,16 +173,21 @@ class MainWindow(QDialog, Ui_Dialog):
 
     def open_record_dialog(self) -> None:
         """Abre o diálogo para capturar áudio direto da ESP32-S3 ou microfone."""
-        from gui.dialog_record import RecordDialog
+        try:
+            from gui.dialog_record import DialogRecord as RecordDialog
+        except ImportError:
+            from gui.dialog_record import RecordDialog
+
         dlg = RecordDialog(self)
-        dlg.recording_finished.connect(self.load_direct_audio)
+        if hasattr(dlg, "recording_finished"):
+            dlg.recording_finished.connect(self.load_direct_audio)
         dlg.exec()
 
     def load_direct_audio(self, filepath: str, auto_run_tonematching: bool = False) -> None:
-        """
-        Carrega a gravação direta da guitarra, ignorando o Demucs e
-        preparando a aba de Tone Matching de forma imediata.
-        """
+        """Carrega a gravação direta da guitarra, ignorando o Demucs."""
+        if not filepath or not Path(filepath).exists():
+            return
+
         logger.info(f"Carregando áudio de entrada direta: {filepath}")
         self.path_original = filepath
         self.path_guitarra = filepath
@@ -174,9 +195,6 @@ class MainWindow(QDialog, Ui_Dialog):
 
         try:
             self.player_orig.stop()
-        except RuntimeError:
-            pass
-        try:
             self.player_stem.stop()
         except RuntimeError:
             pass
@@ -210,7 +228,6 @@ class MainWindow(QDialog, Ui_Dialog):
         self.tab_tonematching.reset()
         self.tab_tonematching.set_selected_stem("guitar", filepath)
 
-        # Alterna para a aba de Tone Matching
         self.tabsMain.setCurrentWidget(self.tab_tonematching)
 
         self._set_status("Gravação da ESP32/Microfone carregada com sucesso! Demucs ignorado.")
@@ -231,22 +248,17 @@ class MainWindow(QDialog, Ui_Dialog):
 
         file_path_obj = Path(file_name)
         try:
-            file_size_bytes = file_path_obj.stat().st_size
+            if file_path_obj.stat().st_size == 0:
+                QMessageBox.warning(self, "Arquivo vazio", "O arquivo selecionado possui 0 bytes.")
+                return
         except OSError as exc:
             QMessageBox.critical(self, "Arquivo inacessível", str(exc))
-            return
-
-        if file_size_bytes == 0:
-            QMessageBox.warning(self, "Arquivo vazio", "O arquivo selecionado possui 0 bytes.")
             return
 
         self.path_original = file_name
 
         try:
             self.player_orig.stop()
-        except RuntimeError:
-            pass
-        try:
             self.player_stem.stop()
         except RuntimeError:
             pass
@@ -258,17 +270,23 @@ class MainWindow(QDialog, Ui_Dialog):
         self.lbl_cover.setText("♪")
 
         if self.metadata_thread is not None:
+            # Não bloqueamos a UI esperando a thread antiga terminar:
+            # apenas a desconectamos dos slots (ela seguirá rodando em
+            # segundo plano e se autodestrói via deleteLater ao concluir).
+            # Os handlers `_on_metadata_finished`/`_on_metadata_error` já
+            # ignoram sinais de threads que não são mais a atual.
             try:
-                self.metadata_thread.quit()
-                self.metadata_thread.wait(1000)
-            except RuntimeError:
+                self.metadata_thread.finished.disconnect(self._on_metadata_finished)
+                self.metadata_thread.error.disconnect(self._on_metadata_error)
+            except (RuntimeError, TypeError):
                 pass
-            finally:
-                self.metadata_thread = None
+            self.metadata_thread = None
 
         self.metadata_thread = MetadataWorker(file_name)
         self.metadata_thread.finished.connect(self._on_metadata_finished)
+        self.metadata_thread.finished.connect(self.metadata_thread.deleteLater)
         self.metadata_thread.error.connect(self._on_metadata_error)
+        self.metadata_thread.error.connect(self.metadata_thread.deleteLater)
         self.metadata_thread.start()
 
         self.btn_play_orig.setEnabled(False)
@@ -312,7 +330,12 @@ class MainWindow(QDialog, Ui_Dialog):
                 if img.loadFromData(image_data):
                     pixmap = QPixmap.fromImage(img)
                     self.lbl_cover.setPixmap(
-                        pixmap.scaled(180, 180, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                        pixmap.scaled(
+                            180,
+                            180,
+                            Qt.AspectRatioMode.KeepAspectRatio,
+                            Qt.TransformationMode.SmoothTransformation,
+                        )
                     )
                     self.lbl_cover.setText("")
                 else:
@@ -327,6 +350,16 @@ class MainWindow(QDialog, Ui_Dialog):
         self._set_status("Música carregada.")
 
     def _on_metadata_error(self, err_msg: str) -> None:
+        # Guarda contra corrida: se o usuário trocou de arquivo enquanto
+        # esta MetadataWorker ainda rodava, `self.metadata_thread` já
+        # aponta para uma thread mais nova (ou None). Nesse caso, este
+        # sinal de erro é de uma leitura obsoleta e não deve sobrescrever
+        # os metadados corretos (já carregados ou em carregamento) do
+        # arquivo atual.
+        if self.sender() is not self.metadata_thread:
+            logger.debug("Sinal de erro de metadados obsoleto ignorado (arquivo já trocado).")
+            return
+
         self.lbl_info.setText(f"{Path(self.path_original).stem}  |  --:--")
         self.lbl_metadata.setText("Sem metadados.")
         self.lbl_cover.setText("♪")
@@ -338,7 +371,10 @@ class MainWindow(QDialog, Ui_Dialog):
         self.btn_load.setEnabled(False)
         self.btn_record.setEnabled(False)
         self.progress_bar.setRange(0, 0)
-        self._notify("Separação de faixas iniciada", f"Processando '{Path(self.path_original).name}' com o Demucs…")
+        self._notify(
+            "Separação de faixas iniciada",
+            f"Processando '{Path(self.path_original).name}' com o Demucs…",
+        )
 
     def _on_demucs_finished(self, guitar_path: str, stems_dir: str) -> None:
         self.path_guitarra = guitar_path
@@ -379,9 +415,9 @@ class MainWindow(QDialog, Ui_Dialog):
         if stem_name and self.path_stems_dir:
             candidate = Path(self.path_stems_dir) / f"{stem_name}.wav"
             if candidate.exists():
-                stem_path = str(candidate)
+                stem_path = str(candidate.resolve())
         elif stem_name and self.path_guitarra:
-            stem_path = self.path_guitarra
+            stem_path = str(Path(self.path_guitarra).resolve())
         self.tab_tonematching.set_selected_stem(stem_name, stem_path)
 
     def _on_analysis_started(self) -> None:
@@ -438,7 +474,11 @@ class MainWindow(QDialog, Ui_Dialog):
         self.btn_load.setEnabled(True)
         self.btn_record.setEnabled(True)
         self._set_status("Erro ao enviar para a pedaleira.")
-        self._notify("Falha no envio", self._friendly_error_summary(err_msg), icon=QSystemTrayIcon.MessageIcon.Critical)
+        self._notify(
+            "Falha no envio",
+            self._friendly_error_summary(err_msg),
+            icon=QSystemTrayIcon.MessageIcon.Critical,
+        )
 
     def _on_worker_error(self, err_msg: str) -> None:
         self.progress_bar.setRange(0, 100)
@@ -462,7 +502,8 @@ class MainWindow(QDialog, Ui_Dialog):
         elif state == QMediaPlayer.PlaybackState.PausedState:
             self.player_orig.play()
         else:
-            self.player_orig.setSource(QUrl.fromLocalFile(self.path_original))
+            abs_path = str(Path(self.path_original).resolve())
+            self.player_orig.setSource(QUrl.fromLocalFile(abs_path))
             self.player_orig.play()
 
     def stop_original(self) -> None:
@@ -484,14 +525,20 @@ class MainWindow(QDialog, Ui_Dialog):
             self.player_stem.play()
         else:
             faixa = self.combo_stems.currentText()
-            stem_file = Path(self.path_stems_dir) / f"{faixa}.wav" if self.path_stems_dir else Path(self.path_guitarra)
+            stem_file = (
+                Path(self.path_stems_dir) / f"{faixa}.wav"
+                if self.path_stems_dir
+                else Path(self.path_guitarra)
+            )
             if not stem_file.exists():
                 if self.path_guitarra and Path(self.path_guitarra).exists():
                     stem_file = Path(self.path_guitarra)
                 else:
-                    QMessageBox.warning(self, "Arquivo não encontrado", f"A faixa '{faixa}.wav' não foi encontrada.")
+                    QMessageBox.warning(
+                        self, "Arquivo não encontrado", f"A faixa '{faixa}.wav' não foi encontrada."
+                    )
                     return
-            self.player_stem.setSource(QUrl.fromLocalFile(str(stem_file)))
+            self.player_stem.setSource(QUrl.fromLocalFile(str(stem_file.resolve())))
             self.player_stem.play()
 
     def stop_stem(self) -> None:
@@ -506,7 +553,8 @@ class MainWindow(QDialog, Ui_Dialog):
     def _on_stem_selection_changed(self, new_stem: str) -> None:
         self.player_stem.stop()
         self._propagate_stem_selection(new_stem)
-        if new_stem and new_stem != self.tab_tonematching.last_analyzed_stem:
+        last_analyzed = getattr(self.tab_tonematching, "last_analyzed_stem", None)
+        if new_stem and new_stem != last_analyzed:
             self.lbl_gate.setText("Noise Gate: -- dB")
             self.lbl_eq.setText("EQ: Low: -- | M1: -- | M2: -- | High: --")
             self.tab_hardware.set_params({})
@@ -529,7 +577,12 @@ class MainWindow(QDialog, Ui_Dialog):
         logger.info(msg)
         self.lbl_status.setText(f"● {msg}")
 
-    def _notify(self, title: str, message: str, icon=QSystemTrayIcon.MessageIcon.Information) -> None:
+    def _notify(
+        self,
+        title: str,
+        message: str,
+        icon: QSystemTrayIcon.MessageIcon = QSystemTrayIcon.MessageIcon.Information,
+    ) -> None:
         if QSystemTrayIcon.isSystemTrayAvailable():
             self.tray_icon.showMessage(title, message, icon, 4000)
 
@@ -552,9 +605,13 @@ class MainWindow(QDialog, Ui_Dialog):
             except RuntimeError:
                 pass
 
-        self.tab_demucs.stop_thread()
-        self.tab_tonematching.stop_thread()
-        self.tab_hardware.stop_threads()
+        if hasattr(self.tab_demucs, "stop_thread"):
+            self.tab_demucs.stop_thread()
+        if hasattr(self.tab_tonematching, "stop_thread"):
+            self.tab_tonematching.stop_thread()
+        if hasattr(self.tab_hardware, "stop_threads"):
+            self.tab_hardware.stop_threads()
+
         event.accept()
 
 

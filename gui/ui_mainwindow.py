@@ -247,9 +247,9 @@ class Ui_Dialog(object):
         _translate = QtCore.QCoreApplication.translate
         Dialog.setWindowTitle(_translate("Dialog", "Tone Matcher"))
         self.btn_load.setText(_translate("Dialog", "＋  Carregar Música de Referência…"))
-        self.btn_record.setText(_translate("Dialog", "🎙  Gravar Entrada (ESP / Mic)…"))
+        self.btn_record.setText(_translate("Dialog", "Gravar Entrada (ESP / Mic)…"))
         self.lbl_filepath.setText(_translate("Dialog", "Nenhum arquivo selecionado."))
-        self.lbl_cover.setText(_translate("Dialog", "♪"))
+        self.lbl_cover.setText(_translate("Dialog", "Sem capa"))
         self.lbl_metadata.setText(_translate("Dialog", "Nenhuma informação disponível."))
         self.lbl_info.setText(_translate("Dialog", "Nenhuma música carregada  |  00:00"))
         self.lbl_seek_orig.setText(_translate("Dialog", "Orig"))
@@ -265,13 +265,3 @@ class Ui_Dialog(object):
         self.lbl_status.setText(_translate("Dialog", "● Status: Aguardando…"))
         self.lbl_gate.setText(_translate("Dialog", "Noise Gate: -- dB"))
         self.lbl_eq.setText(_translate("Dialog", "EQ — Bass: --  |  Mid: --  |  Treble: --"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    Dialog = QtWidgets.QDialog()
-    ui = Ui_Dialog()
-    ui.setupUi(Dialog)
-    Dialog.show()
-    sys.exit(app.exec())

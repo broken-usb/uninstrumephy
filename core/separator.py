@@ -266,15 +266,23 @@ class AudioSeparator:
 
     def _cache_dir_for(self, audio_path: Path) -> Path:
         """
-        Gera um diretório de cache único por arquivo de entrada, baseado
-        no NOME do arquivo + seu TAMANHO em bytes (não no caminho absoluto).
+        Gera um diretório de cache único por combinação de arquivo de
+        entrada + parâmetros de inferência, baseado no NOME do arquivo,
+        seu TAMANHO em bytes (não no caminho absoluto) e nos parâmetros
+        `shifts`/`overlap` usados.
 
-        Isso garante duas coisas ao mesmo tempo:
+        Isso garante três coisas ao mesmo tempo:
           - Evita colisão entre arquivos de mesmo nome mas conteúdo
             diferente (tamanhos diferentes → hash diferente).
           - Sobrevive à movimentação do arquivo entre pastas (ex.: o
             usuário move a música de Downloads/ para Musicas/TCC/), já
             que o caminho absoluto não entra mais no cálculo do hash.
+          - Evita devolver um stem antigo, gerado com shifts/overlap
+            diferentes, quando o usuário muda esses parâmetros e roda a
+            separação de novo para o mesmo arquivo (antes disso exigia
+            marcar manualmente "forçar reprocessamento"; o modelo já
+            fazia parte da chave via subdiretório `self.model_name`,
+            mas shifts/overlap não entravam no cálculo).
 
         Se o tamanho do arquivo não puder ser lido (ex.: problema de
         permissão ou volume de rede instável), cai em um fallback seguro
@@ -289,6 +297,11 @@ class AudioSeparator:
                 f"Usando caminho absoluto como fallback para o cache."
             )
             hash_input = str(audio_path.resolve())
+
+        # Inclui os parâmetros de qualidade/velocidade na chave de cache
+        # para que resultados gerados com configurações diferentes nunca
+        # sejam confundidos entre si.
+        hash_input = f"{hash_input}_shifts{self.shifts}_overlap{self.overlap:.2f}"
 
         digest = hashlib.sha1(hash_input.encode("utf-8")).hexdigest()[:10]
         safe_name = f"{audio_path.stem}_{digest}"

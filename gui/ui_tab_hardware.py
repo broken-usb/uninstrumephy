@@ -96,20 +96,10 @@ class Ui_TabHardware(object):
 
     def retranslateUi(self, TabHardware):
         _translate = QtCore.QCoreApplication.translate
-        self.lbl_hardware_title.setText(_translate("TabHardware", "🔌  Pedal ESP32-S3"))
+        self.lbl_hardware_title.setText(_translate("TabHardware", "Pedal ESP32-S3"))
         self.lbl_presets_title.setText(_translate("TabHardware", "Preset:"))
-        self.btn_load_preset.setText(_translate("TabHardware", "📂 Carregar"))
-        self.btn_save_preset.setText(_translate("TabHardware", "💾 Salvar…"))
-        self.btn_delete_preset.setText(_translate("TabHardware", "🗑 Excluir"))
+        self.btn_load_preset.setText(_translate("TabHardware", "Carregar"))
+        self.btn_save_preset.setText(_translate("TabHardware", "Salvar…"))
+        self.btn_delete_preset.setText(_translate("TabHardware", "Excluir"))
         self.lbl_hardware_hint.setText(_translate("TabHardware", "Os controles abaixo espelham os efeitos disponíveis no firmware. O Noise Gate e o Equalizador podem ser preenchidos automaticamente a partir do Tone Matching, ou ajustados manualmente aqui."))
-        self.btn_send_hardware.setText(_translate("TabHardware", "🔌  Enviar Estado para o Pedal"))
-
-
-if __name__ == "__main__":
-    import sys
-    app = QtWidgets.QApplication(sys.argv)
-    TabHardware = QtWidgets.QWidget()
-    ui = Ui_TabHardware()
-    ui.setupUi(TabHardware)
-    TabHardware.show()
-    sys.exit(app.exec())
+        self.btn_send_hardware.setText(_translate("TabHardware", "Enviar Estado para o Pedal"))

@@ -1,215 +1,156 @@
-from __future__ import annotations
-
-import datetime
+import os
+import tempfile
+import wave
 from pathlib import Path
-from typing import Optional
 
-from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
-    QPushButton, QProgressBar, QCheckBox, QGroupBox, QMessageBox
-)
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtWidgets import QDialog, QMessageBox
+from PyQt6.QtCore import pyqtSignal, QTimer, QTime
 
-from core.audio_recorder import (
-    list_input_devices,
-    get_default_input_device_index,
-    AudioRecorderThread
-)
+try:
+    import sounddevice as sd
+except ImportError:
+    sd = None
+
+from gui.ui_dialog_record import Ui_DialogRecord
 
 
-class RecordDialog(QDialog):
-    """
-    Diálogo para captura direta de áudio a partir da ESP32-S3 ou microfone,
-    com medidor VU em tempo real e opção de ir direto para o Tone Matching.
-    """
-    recording_finished = pyqtSignal(str, bool)  # (caminho_arquivo, auto_tone_matching)
+class DialogRecord(QDialog, Ui_DialogRecord):
+    # Sinal esperado pelo main_gui para receber o caminho do áudio gravado
+    recording_finished = pyqtSignal(str)
 
-    def __init__(self, parent=None, default_output_dir: str = "output/recordings") -> None:
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.setWindowTitle("Gravação Direta — ESP32-S3 / Microfone")
-        self.resize(500, 330)
-        self.output_dir = Path(default_output_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.setupUi(self)
 
-        self.recorded_filepath: Optional[str] = None
-        self.recorder_thread: Optional[AudioRecorderThread] = None
+        self.is_recording = False
+        self.recorded_frames = []
+        self.output_filepath = ""
+        self.stream = None
 
-        self._init_ui()
-        self._refresh_device_list()
+        self.time = QTime(0, 0, 0)
+        self.timer = QTimer(self)
+        self.timer.timeout.connect(self._update_timer)
 
-    def _init_ui(self) -> None:
-        layout = QVBoxLayout(self)
-        layout.setSpacing(12)
+        self._populate_audio_devices()
+        self._setup_signals()
 
-        # 1. Seleção do Dispositivo
-        grp_dev = QGroupBox("Dispositivo de Entrada de Áudio")
-        l_dev = QHBoxLayout(grp_dev)
-        self.combo_devices = QComboBox()
-        self.btn_refresh = QPushButton("🔄 Atualizar")
-        self.btn_refresh.setFixedWidth(90)
-        self.btn_refresh.clicked.connect(self._refresh_device_list)
-        l_dev.addWidget(self.combo_devices, 1)
-        l_dev.addWidget(self.btn_refresh)
-        layout.addWidget(grp_dev)
+    def _setup_signals(self):
+        self.btnRecord.clicked.connect(self._start_recording)
+        self.btnStop.clicked.connect(self._stop_recording)
+        self.btnSave.clicked.connect(self._save_and_close)
 
-        # 2. Configuração de Duração
-        grp_dur = QGroupBox("Configuração da Gravação")
-        l_dur = QHBoxLayout(grp_dur)
-        l_dur.addWidget(QLabel("Duração:"))
-        self.combo_duration = QComboBox()
-        self.combo_duration.addItem("5 segundos", 5.0)
-        self.combo_duration.addItem("10 segundos", 10.0)
-        self.combo_duration.addItem("15 segundos (Recomendado)", 15.0)
-        self.combo_duration.addItem("30 segundos", 30.0)
-        self.combo_duration.addItem("Manual (Iniciar / Parar)", 0.0)
-        self.combo_duration.setCurrentIndex(2)  # 15s padrão
-        l_dur.addWidget(self.combo_duration, 1)
-        layout.addWidget(grp_dur)
+        self.btnStop.setEnabled(False)
+        self.btnSave.setEnabled(False)
 
-        # 3. Medidor VU e Temporizador
-        grp_meter = QGroupBox("Nível de Entrada (Sinal) e Tempo")
-        l_meter = QVBoxLayout(grp_meter)
-        l_meter.setSpacing(6)
-
-        self.lbl_timer = QLabel("Tempo: 00:00 / 00:15")
-        self.lbl_timer.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_timer.setStyleSheet("font-size: 13px; font-weight: bold;")
-        l_meter.addWidget(self.lbl_timer)
-
-        self.meter_bar = QProgressBar()
-        self.meter_bar.setRange(0, 100)
-        self.meter_bar.setValue(0)
-        self.meter_bar.setTextVisible(False)
-        self.meter_bar.setFixedHeight(16)
-        self.meter_bar.setStyleSheet("""
-            QProgressBar {
-                border: 1px solid rgba(128, 128, 128, 0.4);
-                border-radius: 4px;
-                background-color: rgba(0, 0, 0, 0.08);
-            }
-            QProgressBar::chunk {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #38a169, stop:0.75 #d69e2e, stop:0.95 #e53e3e);
-                border-radius: 3px;
-            }
-        """)
-        l_meter.addWidget(self.meter_bar)
-        layout.addWidget(grp_meter)
-
-        self.chk_auto_tone = QCheckBox("Pular Demucs e executar Tone Matching automaticamente")
-        self.chk_auto_tone.setChecked(True)
-        self.chk_auto_tone.setStyleSheet("font-weight: bold; color: #2b6cb0;")
-        layout.addWidget(self.chk_auto_tone)
-
-        # 4. Botões de Ação
-        l_actions = QHBoxLayout()
-        self.btn_record_toggle = QPushButton("🔴 Iniciar Gravação")
-        self.btn_record_toggle.setStyleSheet("font-weight: bold; padding: 6px 14px;")
-        self.btn_record_toggle.clicked.connect(self._toggle_recording)
-
-        self.btn_accept = QPushButton("✅ Usar Gravação")
-        self.btn_accept.setEnabled(False)
-        self.btn_accept.clicked.connect(self._accept_recording)
-
-        self.btn_cancel = QPushButton("Cancelar")
-        self.btn_cancel.clicked.connect(self.reject)
-
-        l_actions.addWidget(self.btn_record_toggle)
-        l_actions.addWidget(self.btn_accept)
-        l_actions.addWidget(self.btn_cancel)
-        layout.addLayout(l_actions)
-
-    def _refresh_device_list(self) -> None:
-        self.combo_devices.clear()
-        devices = list_input_devices()
-        default_idx = get_default_input_device_index()
-        selected_combo_idx = 0
-
-        for idx, d in enumerate(devices):
-            prefix = "🎸 ESP32-S3: " if d["is_esp32"] else "🎙 "
-            self.combo_devices.addItem(f"{prefix}{d['name']}", d["index"])
-            if d["index"] == default_idx:
-                selected_combo_idx = idx
-
-        if self.combo_devices.count() > 0:
-            self.combo_devices.setCurrentIndex(selected_combo_idx)
-            self.btn_record_toggle.setEnabled(True)
-        else:
-            self.combo_devices.addItem("Nenhum dispositivo de entrada encontrado", None)
-            self.btn_record_toggle.setEnabled(False)
-
-    def _toggle_recording(self) -> None:
-        if self.recorder_thread is not None and self.recorder_thread.isRunning():
-            self.btn_record_toggle.setText("Parando…")
-            self.btn_record_toggle.setEnabled(False)
-            self.recorder_thread.request_stop()
+    def _populate_audio_devices(self):
+        self.comboDevice.clear()
+        if sd is None:
+            self.comboDevice.addItem("sounddevice não instalado")
             return
 
-        device_idx = self.combo_devices.currentData()
-        duration_s = float(self.combo_duration.currentData())
+        try:
+            devices = sd.query_devices()
+            input_devices = [
+                (idx, d["name"])
+                for idx, d in enumerate(devices)
+                if d.get("max_input_channels", 0) > 0
+            ]
+            if not input_devices:
+                self.comboDevice.addItem("Nenhum microfone encontrado")
+                return
 
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        target_path = self.output_dir / f"guitar_esp_{timestamp}.wav"
+            for dev_idx, dev_name in input_devices:
+                self.comboDevice.addItem(f"[{dev_idx}] {dev_name}", userData=dev_idx)
+        except Exception:
+            self.comboDevice.addItem("Erro ao listar dispositivos")
 
-        self.recorder_thread = AudioRecorderThread(
-            output_filepath=str(target_path),
-            device_index=device_idx,
-            duration_s=duration_s,
-            sample_rate=44100,
-            channels=1,
-            parent=self
-        )
-        self.recorder_thread.progress.connect(self._on_record_progress)
-        self.recorder_thread.level_meter.connect(self.meter_bar.setValue)
-        self.recorder_thread.finished_recording.connect(self._on_record_finished)
-        self.recorder_thread.error.connect(self._on_record_error)
+        if hasattr(self, "comboSampleRate"):
+            self.comboSampleRate.clear()
+            self.comboSampleRate.addItems(["44100", "48000"])
 
-        self.btn_record_toggle.setText("⏹ Parar Gravação")
-        self.btn_record_toggle.setEnabled(True)
-        self.combo_devices.setEnabled(False)
-        self.combo_duration.setEnabled(False)
-        self.btn_refresh.setEnabled(False)
-        self.btn_accept.setEnabled(False)
+    def _audio_callback(self, indata, frames, time_info, status):
+        if self.is_recording:
+            self.recorded_frames.append(indata.copy())
 
-        self.recorder_thread.start()
+    def _start_recording(self):
+        if sd is None:
+            QMessageBox.critical(self, "Erro", "Biblioteca 'sounddevice' não instalada.")
+            return
 
-    def _on_record_progress(self, elapsed: float, total: float) -> None:
-        mins_e, secs_e = divmod(int(elapsed), 60)
-        if total > 0:
-            mins_t, secs_t = divmod(int(total), 60)
-            self.lbl_timer.setText(f"Tempo: {mins_e:02d}:{secs_e:02d} / {mins_t:02d}:{secs_t:02d}")
-        else:
-            self.lbl_timer.setText(f"Tempo: {mins_e:02d}:{secs_e:02d} (Manual)")
+        device_idx = self.comboDevice.currentData()
+        sample_rate = int(self.comboSampleRate.currentText()) if hasattr(self, "comboSampleRate") and self.comboSampleRate.currentText() else 44100
 
-    def _on_record_finished(self, filepath: str) -> None:
-        self.recorded_filepath = filepath
-        self.meter_bar.setValue(0)
-        self.lbl_timer.setText("Gravação Concluída com Sucesso!")
-        self.btn_record_toggle.setText("🔴 Gravar Novamente")
-        self.btn_record_toggle.setEnabled(True)
-        self.btn_accept.setEnabled(True)
-        self.combo_devices.setEnabled(True)
-        self.combo_duration.setEnabled(True)
-        self.btn_refresh.setEnabled(True)
+        try:
+            self.recorded_frames = []
+            self.stream = sd.InputStream(
+                samplerate=sample_rate,
+                channels=1,
+                dtype="int16",
+                device=device_idx,
+                callback=self._audio_callback,
+            )
+            self.stream.start()
+            self.is_recording = True
 
-    def _on_record_error(self, err_msg: str) -> None:
-        QMessageBox.critical(self, "Erro de Gravação", err_msg)
-        self.meter_bar.setValue(0)
-        self.lbl_timer.setText("Falha na Gravação")
-        self.btn_record_toggle.setText("🔴 Iniciar Gravação")
-        self.btn_record_toggle.setEnabled(True)
-        self.combo_devices.setEnabled(True)
-        self.combo_duration.setEnabled(True)
-        self.btn_refresh.setEnabled(True)
+            self.time = QTime(0, 0, 0)
+            self.labelTimer.setText("00:00.00")
+            self.timer.start(1000)
 
-    def _accept_recording(self) -> None:
-        if self.recorded_filepath:
-            auto_tone = self.chk_auto_tone.isChecked()
-            self.recording_finished.emit(self.recorded_filepath, auto_tone)
+            self.btnRecord.setEnabled(False)
+            self.btnStop.setEnabled(True)
+            self.btnSave.setEnabled(False)
+        except Exception as exc:
+            QMessageBox.critical(self, "Falha na Gravação", f"Não foi possível abrir o dispositivo de áudio:\n{exc}")
+
+    def _stop_recording(self):
+        if not self.is_recording:
+            return
+
+        self.is_recording = False
+        self.timer.stop()
+
+        if self.stream:
+            self.stream.stop()
+            self.stream.close()
+            self.stream = None
+
+        self.btnRecord.setEnabled(True)
+        self.btnStop.setEnabled(False)
+        self.btnSave.setEnabled(len(self.recorded_frames) > 0)
+
+    def _update_timer(self):
+        self.time = self.time.addSecs(1)
+        self.labelTimer.setText(self.time.toString("mm:ss.00"))
+
+    def _save_and_close(self):
+        if not self.recorded_frames:
+            self.reject()
+            return
+
+        try:
+            import numpy as np
+
+            audio_data = np.concatenate(self.recorded_frames, axis=0)
+            temp_dir = tempfile.gettempdir()
+            self.output_filepath = os.path.join(temp_dir, "guitar_direct_input.wav")
+            sample_rate = int(self.comboSampleRate.currentText()) if hasattr(self, "comboSampleRate") and self.comboSampleRate.currentText() else 44100
+
+            with wave.open(self.output_filepath, "wb") as wf:
+                wf.setnchannels(1)
+                wf.setsampwidth(2)  # 16-bit PCM
+                wf.setframerate(sample_rate)
+                wf.writeframes(audio_data.tobytes())
+
+            # Notifica o main_gui com o arquivo salvo
+            self.recording_finished.emit(self.output_filepath)
             self.accept()
+        except Exception as exc:
+            QMessageBox.critical(self, "Erro ao Salvar", f"Não foi possível gravar o arquivo WAV:\n{exc}")
 
-    def closeEvent(self, event) -> None:
-        if self.recorder_thread is not None and self.recorder_thread.isRunning():
-            self.recorder_thread.request_stop()
-            self.recorder_thread.wait(1500)
-        super().closeEvent(event)
+    def closeEvent(self, event):
+        self._stop_recording()
+        event.accept()
+
+
+# Alias para retrocompatibilidade de importação
+RecordDialog = DialogRecord

@@ -112,7 +112,7 @@ class Ui_TabDemucs(object):
 
     def retranslateUi(self, TabDemucs):
         _translate = QtCore.QCoreApplication.translate
-        self.lbl_demucs_title.setText(_translate("TabDemucs", "⚙  Separação de Faixas (Demucs)"))
+        self.lbl_demucs_title.setText(_translate("TabDemucs", "Separação de Faixas (Demucs)"))
         self.lbl_demucs_model.setText(_translate("TabDemucs", "Modelo:"))
         self.btn_help_model.setText(_translate("TabDemucs", "?"))
         self.lbl_demucs_device.setText(_translate("TabDemucs", "Device:"))
@@ -126,4 +126,4 @@ class Ui_TabDemucs(object):
         self.lbl_demucs_options_hint.setText(_translate("TabDemucs", "Valores mais altos de Shifts/Overlap aumentam a qualidade da separação, mas tornam o processamento mais lento."))
         self.check_force_reprocess.setText(_translate("TabDemucs", "Forçar reprocessamento (ignorar cache)"))
         self.check_force_reprocess.setToolTip(_translate("TabDemucs", "Se marcado, roda o Demucs novamente mesmo que esta música já tenha sido processada antes com as mesmas configurações, sobrescrevendo os stems em cache."))
-        self.btn_run_demucs.setText(_translate("TabDemucs", "⚙  Separar Faixas"))
+        self.btn_run_demucs.setText(_translate("TabDemucs", "Separar Faixas"))

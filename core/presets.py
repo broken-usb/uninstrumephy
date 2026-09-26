@@ -89,6 +89,11 @@ def apply_preset_dict(preset: dict, effect_widgets: dict) -> list[str]:
     warnings: list[str] = []
     effects_data = preset.get("effects", {})
 
+    if not isinstance(effects_data, dict):
+        msg = "Campo 'effects' do preset está malformado (esperava um objeto) — nenhum efeito foi aplicado."
+        logger.warning(msg)
+        return [msg]
+
     for key, effect_state in effects_data.items():
         widget = effect_widgets.get(key)
         if widget is None:
@@ -97,9 +102,22 @@ def apply_preset_dict(preset: dict, effect_widgets: dict) -> list[str]:
             warnings.append(msg)
             continue
 
+        if not isinstance(effect_state, dict):
+            msg = f"Estado do efeito '{key}' no preset está malformado — ignorado."
+            logger.warning(msg)
+            warnings.append(msg)
+            continue
+
         widget.set_active(bool(effect_state.get("active", False)))
 
-        for field_name, value in effect_state.get("params", {}).items():
+        params = effect_state.get("params", {})
+        if not isinstance(params, dict):
+            msg = f"Parâmetros do efeito '{key}' no preset estão malformados — ignorados."
+            logger.warning(msg)
+            warnings.append(msg)
+            continue
+
+        for field_name, value in params.items():
             if field_name not in _known_param_fields(key):
                 msg = (
                     f"Parâmetro '{field_name}' do efeito '{key}' não existe "
@@ -108,7 +126,15 @@ def apply_preset_dict(preset: dict, effect_widgets: dict) -> list[str]:
                 logger.warning(msg)
                 warnings.append(msg)
                 continue
-            widget.set_param_value(field_name, int(value))
+            try:
+                widget.set_param_value(field_name, int(value))
+            except (TypeError, ValueError):
+                msg = (
+                    f"Valor inválido para o parâmetro '{field_name}' do "
+                    f"efeito '{key}' no preset — ignorado."
+                )
+                logger.warning(msg)
+                warnings.append(msg)
 
     return warnings
 

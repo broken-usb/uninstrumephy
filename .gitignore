@@ -1,3 +1,6 @@
+# Logs & Saidas do Demucs
+output/
+
 # Formatos Não Comprimidos (Uncompressed)
 *.wav
 *.aiff

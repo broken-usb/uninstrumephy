@@ -91,7 +91,10 @@ class AudioAnalyzer:
         freqs = librosa.fft_frequencies(sr=sr, n_fft=1024)
 
         def band_energy(low: int, high: int) -> float:
-            idx = np.where((freqs >= low) & (freqs <= high))[0]
+            # Intervalo semiaberto [low, high) — mesmo critério usado em
+            # _compute_eq_curve — para que um bin de frequência exatamente
+            # na fronteira entre duas bandas não seja contado em ambas.
+            idx = np.where((freqs >= low) & (freqs < high))[0]
             if idx.size == 0:
                 return 0.0
             return float(np.sqrt(np.mean(np.square(stft[idx, :]))))

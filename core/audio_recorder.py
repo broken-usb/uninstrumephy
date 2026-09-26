@@ -105,7 +105,23 @@ class AudioRecorderThread(QThread):
         def callback(indata, frames, time_info, status):
             if status:
                 logger.debug(f"PortAudio status: {status}")
-            audio_queue.put(indata.copy())
+            # IMPORTANTE: este callback roda na thread de tempo real do
+            # PortAudio e NUNCA pode bloquear. put() bloqueante aqui, com
+            # a fila cheia, travaria a captura de áudio (ou o driver de
+            # áudio do sistema). Usamos put_nowait() e descartamos o
+            # frame mais antigo em caso de saturação, registrando um
+            # aviso — perder um frame ocasional é preferível a travar.
+            try:
+                audio_queue.put_nowait(indata.copy())
+            except queue.Full:
+                try:
+                    audio_queue.get_nowait()  # descarta o frame mais antigo
+                except queue.Empty:
+                    pass
+                try:
+                    audio_queue.put_nowait(indata.copy())
+                except queue.Full:
+                    logger.debug("Fila de áudio saturada; frame descartado.")
 
         self.status_msg.emit("Capturando áudio da entrada…")
         start_time = time.monotonic()

@@ -21,7 +21,7 @@
    <item>
     <widget class="QLabel" name="lbl_demucs_title">
      <property name="text">
-      <string>⚙  Separação de Faixas (Demucs)</string>
+      <string>Separação de Faixas (Demucs)</string>
      </property>
     </widget>
    </item>
@@ -223,7 +223,7 @@
       <bool>false</bool>
      </property>
      <property name="text">
-      <string>⚙  Separar Faixas</string>
+      <string>Separar Faixas</string>
      </property>
     </widget>
    </item>
