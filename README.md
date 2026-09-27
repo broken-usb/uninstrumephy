@@ -31,7 +31,7 @@ sudo pacman -S python # Arch
 ```
 
 ```bash
-sudo dnf install python # RHEL/Fedora
+sudo dnf install python # Fedora
 
 ```
 
@@ -48,7 +48,7 @@ sudo pacman -S ffmpeg # Arch
 ```
 
 ```bash
-sudo dnf swap ffmpeg-free ffmpeg --allowerasing # RHEL/Fedora, Precisa do RPM Fusion
+sudo dnf swap ffmpeg-free ffmpeg --allowerasing # Fedora(RPM Fusion)
 
 ```
 
