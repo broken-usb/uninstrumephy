@@ -1,5 +1,6 @@
 # Logs & Saidas do Demucs
 output/
+presets/
 
 # Formatos Não Comprimidos (Uncompressed)
 *.wav
