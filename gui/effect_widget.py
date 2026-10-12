@@ -7,12 +7,12 @@ from PyQt6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QSlider,
-    QCheckBox,
     QSizePolicy,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
 
 from core.effects_spec import EffectSpec, ParamSpec
+from gui.widgets import Switch
 
 
 class EffectWidget(QFrame):
@@ -29,19 +29,27 @@ class EffectWidget(QFrame):
         self._sliders: dict[str, QSlider] = {}
         self._value_labels: dict[str, QLabel] = {}
 
-        self.setFrameShape(QFrame.Shape.StyledPanel)
-        self.setStyleSheet(
-            "EffectWidget { border: 1px solid rgba(120, 120, 120, 0.25); "
-            "border-radius: 6px; background-color: rgba(255, 255, 255, 0.02); }"
-        )
+        # Visual do cartão definido em gui/theme.py (seletor `EffectWidget`).
+        self.setFrameShape(QFrame.Shape.NoFrame)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 4, 8, 4)
-        layout.setSpacing(3)
+        layout.setContentsMargins(12, 8, 12, 10)
+        layout.setSpacing(6)
 
-        self.checkbox_active = QCheckBox(spec.name)
-        self.checkbox_active.setStyleSheet("font-weight: bold; font-size: 11px;")
-        layout.addWidget(self.checkbox_active)
+        header = QHBoxLayout()
+        header.setContentsMargins(0, 0, 0, 0)
+        title = QLabel(spec.name)
+        title.setProperty("role", "title")
+        header.addWidget(title)
+        header.addStretch(1)
+
+        # Mantém o nome `checkbox_active` por compatibilidade: o Switch tem a
+        # mesma API (isChecked / setChecked / toggled).
+        self.checkbox_active = Switch()
+        self.checkbox_active.setToolTip(f"Ativar ou desativar: {spec.name}")
+        self.checkbox_active.setAccessibleName(f"{spec.name} ativo")
+        header.addWidget(self.checkbox_active)
+        layout.addLayout(header)
         self.checkbox_active.toggled.connect(self.changed.emit)
 
         for param in spec.params:
@@ -55,25 +63,26 @@ class EffectWidget(QFrame):
     def _build_param_row(self, param: ParamSpec) -> QHBoxLayout:
         row = QHBoxLayout()
         row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(6)
+        row.setSpacing(12)
 
-        name_label = QLabel(f"{param.label}:")
+        name_label = QLabel(param.label)
         name_label.setMinimumWidth(100)
-        name_label.setStyleSheet("font-size: 11px; color: #bbb;")
+        name_label.setProperty("role", "param")
         row.addWidget(name_label)
 
         slider = QSlider(Qt.Orientation.Horizontal)
         slider.setMinimum(param.min_value)
         slider.setMaximum(param.max_value)
         slider.setValue(param.default)
-        slider.setFixedHeight(18)
+        slider.setFixedHeight(22)
+        slider.setAccessibleName(param.label)
         slider.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         row.addWidget(slider)
 
         value_label = QLabel(self._format_value(param, param.default))
         value_label.setMinimumWidth(65)
         value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        value_label.setStyleSheet("font-size: 10px; font-weight: bold; color: #ddd;")
+        value_label.setProperty("role", "value")
         row.addWidget(value_label)
 
         slider.valueChanged.connect(

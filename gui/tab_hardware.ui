@@ -118,9 +118,6 @@
    </item>
    <item>
     <widget class="QLabel" name="lbl_hardware_hint">
-     <property name="styleSheet">
-      <string notr="true">color: #888; font-size: 11px;</string>
-     </property>
      <property name="text">
       <string>Os controles abaixo espelham os efeitos disponíveis no firmware. O Noise Gate e o Equalizador podem ser preenchidos automaticamente a partir do Tone Matching, ou ajustados manualmente aqui.</string>
      </property>
@@ -131,9 +128,6 @@
    </item>
    <item>
     <widget class="QLabel" name="lbl_gate_source">
-     <property name="styleSheet">
-      <string notr="true">color: #888; font-size: 11px;</string>
-     </property>
      <property name="text">
       <string/>
      </property>

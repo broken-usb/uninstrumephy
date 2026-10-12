@@ -35,7 +35,6 @@ class Ui_TabToneMatching(object):
         self.toneMatchingTabLayout.addWidget(self.lineSepToneMatchingTop)
         self.lbl_analyzed_stem = QtWidgets.QLabel(parent=TabToneMatching)
         self.lbl_analyzed_stem.setText("")
-        self.lbl_analyzed_stem.setStyleSheet("color: #888;")
         self.lbl_analyzed_stem.setObjectName("lbl_analyzed_stem")
         self.toneMatchingTabLayout.addWidget(self.lbl_analyzed_stem)
         self.tabsToneMatching = QtWidgets.QTabWidget(parent=TabToneMatching)

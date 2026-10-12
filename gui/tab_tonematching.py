@@ -54,6 +54,7 @@ class TabToneMatching(QWidget, Ui_TabToneMatching):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setupUi(self)
+        self.btn_run_analysis.setProperty("role", "suggested")
 
         self.waveform_plot = WaveformPlot()
         self.waveformContainerLayout.addWidget(self.waveform_plot)
