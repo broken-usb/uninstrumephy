@@ -142,6 +142,24 @@ class MainWindow(QDialog, Ui_Dialog):
             btn.setAccessibleName(tip)
         self.tabsMain.setDocumentMode(True)
 
+        # --- Correções de layout: nada de alturas/larguras fixas que cortem conteúdo ---
+        unlimited = 16777215
+        for frame in (self.frameHeader, self.framePlayback):
+            frame.setMinimumHeight(0)
+            frame.setMaximumHeight(unlimited)  # a altura passa a seguir o conteúdo
+        self.btn_load.setMaximumWidth(unlimited)
+        self.btn_record.setMaximumWidth(unlimited)
+        self.setMinimumSize(860, 680)
+
+        # Alinha os dois blocos de reprodução: o da direita tem o seletor de faixa
+        # ao lado do título, então o da esquerda ganha a mesma altura de linha.
+        self.lbl_section_orig.setMinimumHeight(self.combo_stems.sizeHint().height())
+        self.combo_stems.setMinimumWidth(130)
+
+        # A capa já é reduzida mantendo a proporção; sem isto o Qt a esticaria.
+        self.lbl_cover.setScaledContents(False)
+        self.lbl_cover.setWordWrap(True)
+
     def _connect_signals(self) -> None:
         self.btn_load.clicked.connect(self.load_audio_file)
         self.btn_record.clicked.connect(self.open_record_dialog)
