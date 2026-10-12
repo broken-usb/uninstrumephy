@@ -23,7 +23,9 @@ Os widgets não devem chamar `setStyleSheet` por conta própria. Em vez disso:
 
 from __future__ import annotations
 
+import tempfile
 from dataclasses import dataclass
+from pathlib import Path
 
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QColor, QFont, QGuiApplication, QPalette
@@ -145,7 +147,37 @@ def _build_palette(t: Tokens) -> QPalette:
     return p
 
 
+def _write_icons(t: Tokens) -> dict[str, str]:
+    """
+    Gera pequenos ícones SVG com as cores do esquema atual (o QSS não desenha
+    setas nem marcas de seleção sozinho). Retorna {nome: caminho com "/"}.
+    """
+    folder = Path(tempfile.gettempdir()) / "uninstrumephy_theme" / ("dark" if t is DARK else "light")
+    folder.mkdir(parents=True, exist_ok=True)
+
+    def svg(name: str, body: str, size: int = 16) -> str:
+        path = folder / f"{name}.svg"
+        path.write_text(
+            f'<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}" '
+            f'viewBox="0 0 {size} {size}" fill="none" stroke-linecap="round" '
+            f'stroke-linejoin="round">{body}</svg>',
+            encoding="utf-8",
+        )
+        return path.as_posix()
+
+    dim, txt, on = t.text_dim, t.text, t.accent_text
+    return {
+        "down": svg("down", f'<path d="M3.5 6l4.5 4.5L12.5 6" stroke="{txt}" stroke-width="1.8"/>'),
+        "down_dis": svg("down_dis", f'<path d="M3.5 6l4.5 4.5L12.5 6" stroke="{t.disabled_text}" stroke-width="1.8"/>'),
+        "up_s": svg("up_s", f'<path d="M3.5 10l4.5-4.5L12.5 10" stroke="{txt}" stroke-width="1.8"/>'),
+        "down_s": svg("down_s", f'<path d="M3.5 6l4.5 4.5L12.5 6" stroke="{txt}" stroke-width="1.8"/>'),
+        "check": svg("check", f'<path d="M3.5 8.5l3 3 6-6.5" stroke="{on}" stroke-width="2"/>'),
+        "dot": svg("dot", f'<circle cx="8" cy="8" r="3" fill="{on}"/>'),
+    }
+
+
 def _stylesheet(t: Tokens, caption_pt: float) -> str:
+    ic = _write_icons(t)
     return f"""
 /* ---------- base ---------- */
 QDialog, QMainWindow {{ background: {t.window}; }}
@@ -218,8 +250,23 @@ QLineEdit, QSpinBox, QDoubleSpinBox, QPlainTextEdit, QTextEdit {{
     border: 1px solid {t.border}; border-radius: {RADIUS}px; padding: 5px 8px;
     selection-background-color: {t.accent}; selection-color: {t.accent_text};
 }}
+QSpinBox, QDoubleSpinBox {{ padding-right: 28px; }}
+QSpinBox::up-button, QDoubleSpinBox::up-button {{
+    subcontrol-origin: border; subcontrol-position: top right;
+    width: 24px; border: none; border-left: 1px solid {t.border};
+    border-top-right-radius: {RADIUS}px; background: transparent;
+}}
+QSpinBox::down-button, QDoubleSpinBox::down-button {{
+    subcontrol-origin: border; subcontrol-position: bottom right;
+    width: 24px; border: none; border-left: 1px solid {t.border};
+    border-bottom-right-radius: {RADIUS}px; background: transparent;
+}}
+QSpinBox::up-button:hover, QSpinBox::down-button:hover,
+QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {{ background: {t.hover}; }}
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{ image: url({ic['up_s']}); width: 10px; height: 10px; }}
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{ image: url({ic['down_s']}); width: 10px; height: 10px; }}
 QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus,
-QPlainTextEdit:focus, QTextEdit:focus {{ border: 2px solid {t.accent}; padding: 4px 7px; }}
+QPlainTextEdit:focus, QTextEdit:focus {{ border: 2px solid {t.accent}; }}
 
 QComboBox {{
     background: {t.surface}; color: {t.text};
@@ -228,7 +275,9 @@ QComboBox {{
 }}
 QComboBox:hover {{ background: {t.chrome}; }}
 QComboBox:focus {{ border: 2px solid {t.accent}; padding: 4px 9px; }}
-QComboBox::drop-down {{ border: none; width: 22px; }}
+QComboBox::drop-down {{ border: none; width: 26px; subcontrol-origin: padding; subcontrol-position: center right; }}
+QComboBox::down-arrow {{ image: url({ic['down']}); width: 14px; height: 14px; }}
+QComboBox::down-arrow:disabled {{ image: url({ic['down_dis']}); }}
 QComboBox QAbstractItemView {{
     background: {t.surface}; color: {t.text};
     border: 1px solid {t.border}; border-radius: {RADIUS}px; padding: 4px;
@@ -246,6 +295,8 @@ QRadioButton::indicator {{ border-radius: 9px; }}
 QCheckBox::indicator:checked, QRadioButton::indicator:checked {{
     background: {t.accent}; border-color: {t.accent};
 }}
+QCheckBox::indicator:checked   {{ image: url({ic['check']}); }}
+QRadioButton::indicator:checked {{ image: url({ic['dot']}); }}
 QCheckBox::indicator:focus, QRadioButton::indicator:focus {{ border: 2px solid {t.accent}; }}
 
 /* ---------- controles deslizantes ---------- */
