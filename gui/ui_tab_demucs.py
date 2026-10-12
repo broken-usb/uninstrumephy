@@ -93,7 +93,6 @@ class Ui_TabDemucs(object):
         self.demucsOptionsGrid.addLayout(self.overlapFieldLayout, 1, 3, 1, 1)
         self.demucsTabLayout.addLayout(self.demucsOptionsGrid)
         self.lbl_demucs_options_hint = QtWidgets.QLabel(parent=TabDemucs)
-        self.lbl_demucs_options_hint.setStyleSheet("color: #888; font-size: 11px;")
         self.lbl_demucs_options_hint.setWordWrap(True)
         self.lbl_demucs_options_hint.setObjectName("lbl_demucs_options_hint")
         self.demucsTabLayout.addWidget(self.lbl_demucs_options_hint)

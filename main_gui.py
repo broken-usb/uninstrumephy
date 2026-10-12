@@ -21,6 +21,7 @@ from gui.ui_mainwindow import Ui_Dialog
 from gui.tab_demucs import TabDemucs
 from gui.tab_tonematching import TabToneMatching
 from gui.tab_hardware import TabHardware
+from gui import theme
 
 # Inicialização do Logging (console + output/logs/latest-log.txt)
 setup_logging()
@@ -122,9 +123,24 @@ class MainWindow(QDialog, Ui_Dialog):
         self.tabsMain.addTab(self.tab_tonematching, "📊  Tone Matching")
         self.tabsMain.addTab(self.tab_hardware, "🔌  Pedal (ESP32-S3)")
 
+        self._setup_appearance()
         self._connect_signals()
         self._apply_master_volume()
         logger.info("Aplicação inicializada.")
+
+    def _setup_appearance(self) -> None:
+        """Papéis visuais (ver gui/theme.py) e dicas de acessibilidade."""
+        self.btn_load.setProperty("role", "suggested")  # ação principal da janela
+        for btn, tip in (
+            (self.btn_play_orig, "Reproduzir ou pausar a música original"),
+            (self.btn_stop_orig, "Parar a música original"),
+            (self.btn_play_guitar, "Reproduzir ou pausar a faixa isolada"),
+            (self.btn_stop_guitar, "Parar a faixa isolada"),
+        ):
+            btn.setProperty("role", "circular")
+            btn.setToolTip(tip)
+            btn.setAccessibleName(tip)
+        self.tabsMain.setDocumentMode(True)
 
     def _connect_signals(self) -> None:
         self.btn_load.clicked.connect(self.load_audio_file)
@@ -617,6 +633,7 @@ class MainWindow(QDialog, Ui_Dialog):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    theme.install(app)  # claro/escuro seguindo o sistema
     window = MainWindow()
     window.showMaximized()
     sys.exit(app.exec())

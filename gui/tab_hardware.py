@@ -43,10 +43,8 @@ class HardwareWorker(QThread):
             else:
                 self.status.emit(f"Conectando à porta {link.port}…")
 
-            try:
-                link.send_state(self.state, progress_cb=self.status.emit)
-            finally:
-                link.close()
+            link.send_state(self.state, progress_cb=self.status.emit)
+            link.close()
 
             logger.info("Envio para a ESP32-S3 concluído.")
             self.finished.emit(was_mock)
@@ -69,6 +67,10 @@ class TabHardware(QWidget, Ui_TabHardware):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setupUi(self)
+
+        # Papéis visuais (ver gui/theme.py): uma ação principal por tela.
+        self.btn_send_hardware.setProperty("role", "suggested")
+        self.btn_delete_preset.setProperty("role", "destructive")
 
         self.hardware_thread: HardwareWorker | None = None
 

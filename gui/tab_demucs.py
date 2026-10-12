@@ -152,6 +152,7 @@ class TabDemucs(QWidget, Ui_TabDemucs):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setupUi(self)
+        self.btn_run_demucs.setProperty("role", "suggested")
 
         self.combo_demucs_model.addItems(AudioSeparator.AVAILABLE_MODELS)
         self.combo_demucs_model.setCurrentText(AudioSeparator.MODEL_NAME)
