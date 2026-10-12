@@ -90,7 +90,7 @@
          </size>
         </property>
         <property name="text">
-         <string>Gravar Entrada (ESP / Mic)…</string>
+         <string>🎙  Escutar / Gravar Entrada (ESP / Mic)…</string>
         </property>
        </widget>
       </item>
@@ -182,7 +182,7 @@
            </size>
           </property>
           <property name="text">
-           <string>Sem capa</string>
+           <string>♪</string>
           </property>
           <property name="scaledContents">
            <bool>true</bool>

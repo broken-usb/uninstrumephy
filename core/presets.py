@@ -8,10 +8,10 @@ from core.effects_spec import EFFECT_SPECS
 
 logger = logging.getLogger(__name__)
 
-# Diretório padrão onde os presets são salvos. Fica dentro da pasta do
-# projeto por padrão, para não exigir permissões especiais nem depender
-# de convenções de "pasta de config" por sistema operacional.
-DEFAULT_PRESETS_DIR = Path("presets")
+# Diretório padrão onde os presets são salvos. Resolvido a partir deste
+# módulo para que os presets incluídos funcionem mesmo quando o aplicativo é
+# iniciado a partir de outro diretório (por exemplo, por um atalho desktop).
+DEFAULT_PRESETS_DIR = Path(__file__).resolve().parent.parent / "presets"
 
 # Versão do formato do arquivo de preset. Incrementar se o layout do
 # JSON mudar de forma incompatível no futuro (ex.: campos renomeados).

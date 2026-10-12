@@ -1,0 +1,100 @@
+{
+  "format_version": 1,
+  "effects": {
+    "gate": {
+      "active": true,
+      "params": {
+        "gate_threshold": -50
+      }
+    },
+    "comp": {
+      "active": true,
+      "params": {
+        "comp_threshold": 35,
+        "comp_ratio": 25,
+        "comp_makeup_gain": 15
+      }
+    },
+    "wah": {
+      "active": false,
+      "params": {
+        "wah_sensitivity": 50,
+        "wah_base_freq": 350,
+        "wah_resonance": 60
+      }
+    },
+    "overdrive": {
+      "active": false,
+      "params": {
+        "dist_drive": 21,
+        "dist_tone": 50,
+        "dist_level": 80
+      }
+    },
+    "eq": {
+      "active": true,
+      "params": {
+        "eq_low_gain": 2,
+        "eq_mid1_gain": 1,
+        "eq_mid2_gain": 0,
+        "eq_high_gain": 2
+      }
+    },
+    "mod": {
+      "active": true,
+      "params": {
+        "mod_rate_hz": 12,
+        "mod_depth": 35,
+        "mod_mix": 35
+      }
+    },
+    "delay": {
+      "active": false,
+      "params": {
+        "delay_time_samples": 340,
+        "delay_feedback": 42,
+        "delay_mix": 30
+      }
+    },
+    "reverb": {
+      "active": true,
+      "params": {
+        "reverb_decay": 55,
+        "reverb_damping": 35,
+        "reverb_mix": 22
+      }
+    },
+    "cab": {
+      "active": false,
+      "params": {
+        "cab_index": 0
+      }
+    },
+    "bitcrusher": {
+      "active": false,
+      "params": {
+        "bitcrusher_bits": 8,
+        "bitcrusher_hold": 4,
+        "bitcrusher_mix": 50
+      }
+    },
+    "tremolo": {
+      "active": false,
+      "params": {
+        "tremolo_rate_hz": 40,
+        "tremolo_depth": 50,
+        "tremolo_shape": 0,
+        "tremolo_mix": 100
+      }
+    },
+    "phaser": {
+      "active": false,
+      "params": {
+        "phaser_rate_hz": 60,
+        "phaser_depth": 70,
+        "phaser_feedback": 30,
+        "phaser_mix": 50
+      }
+    }
+  }
+}

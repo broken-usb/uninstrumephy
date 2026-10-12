@@ -16,6 +16,17 @@ MOCK_PORT = "MOCK"
 # Byte delimitador de fim de pacote no protocolo COBS.
 PACKET_DELIMITER = 0x00
 
+# Protocolo CDC v2 da Placa A (esp32/placaA/include/Protocol.h).
+PROTOCOL_VERSION = 2
+CMD_HELLO = 0x10
+CMD_GET_CAPS = 0x11
+CMD_SET_PARAM = 0x13
+RSP_ACK = 0x80
+RSP_CAPS = 0x81
+RSP_ERROR = 0xFF
+# Bit 8 do effect_mask do pacote CAPS: convolutor de gabinete IR opcional.
+EFFECT_CAP_CAB_SIM = 1 << 8
+
 
 class HardwareLinkError(Exception):
     """Erro genérico de comunicação com a placa ESP32-S3."""
@@ -72,6 +83,35 @@ def cobs_decode(data: bytes) -> bytes:
             output.append(0)
 
     return bytes(output)
+
+
+def crc8(data: bytes) -> int:
+    """CRC-8 polinomial 0x07 usado nos quadros CDC v2."""
+    value = 0
+    for byte in data:
+        value ^= byte
+        for _ in range(8):
+            value = ((value << 1) ^ 0x07) & 0xFF if value & 0x80 else (value << 1) & 0xFF
+    return value
+
+
+def encode_control_frame(command: int, sequence: int, payload: bytes = b"") -> bytes:
+    if len(payload) > 245:
+        raise ValueError("payload CDC excede 245 bytes")
+    raw = struct.pack("<BBH", PROTOCOL_VERSION, command, sequence & 0xFFFF) + payload
+    return cobs_encode(raw + bytes((crc8(raw),))) + bytes((PACKET_DELIMITER,))
+
+
+def decode_control_frame(frame: bytes) -> tuple[int, int, bytes]:
+    if not frame or frame[-1] != PACKET_DELIMITER:
+        raise ValueError("quadro CDC sem terminador")
+    raw = cobs_decode(frame[:-1])
+    if len(raw) < 5 or crc8(raw[:-1]) != raw[-1]:
+        raise ValueError("CRC CDC inválido")
+    version, kind, sequence = struct.unpack_from("<BBH", raw)
+    if version != PROTOCOL_VERSION:
+        raise ValueError(f"versão CDC incompatível: {version}")
+    return kind, sequence, raw[4:-1]
 
 
 class PedalState:
@@ -264,14 +304,16 @@ class ESP32Link:
 
     @staticmethod
     def _autodetect_port() -> str:
-        candidates = [
-            p.device
-            for p in list_ports.comports()
-            if any(
-                keyword in (p.description or "").upper()
-                for keyword in ("CP210", "CH340", "ESP32", "USB", "USB-SERIAL")
-            )
-        ]
+        ports = list(list_ports.comports())
+        # VID/PID do dispositivo composto UAC + CDC do firmware atual.
+        candidates = [p.device for p in ports if p.vid == 0x303A and p.pid == 0x81A1]
+        if not candidates:
+            candidates = [
+                p.device for p in ports
+                if any(keyword in " ".join(
+                    (p.description or ""), (p.product or ""), (p.manufacturer or "")
+                ).upper() for keyword in ("ESP32", "PROCESSED AUDIO", "PEDAL"))
+            ]
         if not candidates:
             logger.warning("Nenhuma porta serial detectada. Usando modo simulado (MOCK).")
             return MOCK_PORT
@@ -293,7 +335,16 @@ class ESP32Link:
                 timeout=self.TIMEOUT_S,
                 write_timeout=self.TIMEOUT_S,
             )
+            # A CDC nativa do ESP32-S3 não usa DTR/RTS para reset. Mantê-los
+            # baixos evita que abrir a porta de controle provoque uma
+            # reconexão USB da UAC em hosts que alternam essas linhas.
+            try:
+                self._conn.dtr = False
+                self._conn.rts = False
+            except serial.SerialException:
+                logger.debug("Não foi possível ajustar DTR/RTS da CDC", exc_info=True)
             time.sleep(self.BOOT_DELAY_S)
+            self._conn.reset_input_buffer()
             logger.info(f"Conectado à ESP32-S3 na porta {self.port}")
         except serial.SerialException as exc:
             raise HardwareLinkError(f"Falha ao abrir {self.port}: {exc}") from exc
@@ -303,13 +354,10 @@ class ESP32Link:
         state: PedalState,
         progress_cb: Callable[[str], None] | None = None,
     ) -> None:
-        raw = state.pack()
-        packet = cobs_encode(raw) + bytes([PACKET_DELIMITER])
-
         if self.is_mock:
             self._notify(progress_cb, "[Simulado] Conectando…")
             self._notify(progress_cb, f"[Simulado] Enviando: {state!r}")
-            logger.info(f"[MOCK] Pacote COBS gerado: {len(raw)} bytes crus -> {len(packet)} bytes transmitidos")
+            logger.info("[MOCK] Estado de 140 bytes validado localmente (CDC v2 não conectado)")
             self._notify(progress_cb, "[Simulado] Envio concluído.")
             return
 
@@ -318,31 +366,121 @@ class ESP32Link:
             self.connect()
 
         try:
-            self._notify(progress_cb, "Enviando parâmetros…")
-            self._conn.write(packet)
-            self._conn.flush()
-            logger.info(f"PedalState enviado ({len(packet)} bytes).")
+            caps = self._get_caps()
+            if caps[0] != 44100 or caps[3] != 1 or caps[9] != PedalState.SIZE:
+                raise HardwareLinkError(
+                    "A Placa A anunciou capacidades incompatíveis "
+                    f"(taxa={caps[0]}, canais={caps[3]}, estado={caps[9]})."
+                )
+
+            cab_supported = bool(int(caps[8]) & EFFECT_CAP_CAB_SIM)
+
+            # O CDC atual recebe alterações absolutas por parâmetro. O antigo
+            # pacote COBS com os 140 bytes de PedalState não é mais aceito.
+            parameters = [
+                (0, 0, state.gate_active), (0, 1, state.gate_threshold),
+                (1, 0, state.comp_active), (1, 1, state.comp_threshold),
+                (1, 2, state.comp_ratio), (1, 3, state.comp_makeup_gain),
+                (2, 0, state.wah_active), (2, 1, state.wah_sensitivity),
+                (2, 2, state.wah_base_freq), (2, 3, state.wah_resonance),
+                (3, 0, state.dist_active), (3, 1, state.dist_drive),
+                (3, 2, state.dist_tone), (3, 3, state.dist_level),
+                (4, 0, state.eq_active), (4, 1, state.eq_low_gain),
+                (4, 2, state.eq_mid1_gain), (4, 3, state.eq_mid2_gain),
+                (4, 4, state.eq_high_gain),
+                (5, 0, state.mod_active), (5, 1, state.mod_rate_hz),
+                (5, 2, state.mod_depth), (5, 3, state.mod_mix),
+                (6, 0, state.delay_active), (6, 1, state.delay_time_samples),
+                (6, 2, state.delay_feedback), (6, 3, state.delay_mix),
+                (7, 0, state.reverb_active), (7, 1, state.reverb_decay),
+                (7, 2, state.reverb_damping), (7, 3, state.reverb_mix),
+                (9, 0, state.bitcrusher_active), (9, 1, state.bitcrusher_bits),
+                (9, 2, state.bitcrusher_hold), (9, 3, state.bitcrusher_mix),
+                (10, 0, state.tremolo_active), (10, 1, state.tremolo_rate_hz),
+                (10, 2, state.tremolo_depth), (10, 3, state.tremolo_shape),
+                (10, 4, state.tremolo_mix),
+                (11, 0, state.phaser_active), (11, 1, state.phaser_rate_hz),
+                (11, 2, state.phaser_depth), (11, 3, state.phaser_feedback),
+                (11, 4, state.phaser_mix),
+            ]
+            if cab_supported:
+                # O efeito 8 mantém os campos históricos do PedalState e só
+                # é enviado quando a imagem anuncia o motor IR no CAPS.
+                parameters.extend([
+                    (8, 0, state.cab_active),
+                    (8, 1, state.cab_index),
+                ])
+            elif state.cab_active:
+                self._notify(
+                    progress_cb,
+                    "Aviso: o cab sim foi solicitado, mas está desativado no build padrão da Placa A.",
+                )
+            self._notify(progress_cb, "Enviando parâmetros pela CDC v2…")
+            for index, (effect, parameter, value) in enumerate(parameters, 1):
+                self._set_param(effect, parameter, float(value))
+                if index % 8 == 0 or index == len(parameters):
+                    self._notify(progress_cb, f"Parâmetros enviados: {index}/{len(parameters)}")
             self._notify(progress_cb, "Envio concluído.")
         except serial.SerialTimeoutException as exc:
-            # A porta pode ter ficado num estado inconsistente (ex.: o
-            # cabo USB caiu no meio da transmissão). Fechamos a conexão
-            # para que a próxima tentativa de envio reabra a porta do
-            # zero, em vez de repetir o mesmo erro indefinidamente.
-            self._reset_connection()
             raise HardwareLinkError(f"Timeout ao comunicar com {self.port}: {exc}") from exc
         except serial.SerialException as exc:
-            self._reset_connection()
             raise HardwareLinkError(f"Falha na transmissão serial: {exc}") from exc
 
-    def _reset_connection(self) -> None:
-        """Fecha a conexão serial atual (se houver) para forçar reabertura no próximo envio."""
-        if self._conn is not None:
+    def _next_sequence(self) -> int:
+        sequence = getattr(self, "_sequence", 1)
+        self._sequence = (sequence + 1) & 0xFFFF or 1
+        return sequence
+
+    def _request(
+        self,
+        command: int,
+        payload: bytes = b"",
+        response_type: int | None = None,
+        retries: int = 3,
+    ) -> bytes:
+        if self._conn is None or not self._conn.is_open:
+            raise HardwareLinkError("A conexão CDC não está aberta")
+        sequence = self._next_sequence()
+        frame = encode_control_frame(command, sequence, payload)
+        for attempt in range(retries):
             try:
-                self._conn.close()
-            except serial.SerialException:
-                pass
-            finally:
-                self._conn = None
+                self._conn.write(frame)
+                self._conn.flush()
+            except serial.SerialException as exc:
+                raise HardwareLinkError(f"Falha ao enviar comando CDC: {exc}") from exc
+            deadline = time.monotonic() + self.TIMEOUT_S
+            while time.monotonic() < deadline:
+                encoded = self._conn.read_until(bytes((PACKET_DELIMITER,)))
+                if not encoded:
+                    continue
+                try:
+                    kind, received_sequence, response = decode_control_frame(encoded)
+                except ValueError:
+                    continue
+                if received_sequence != sequence:
+                    continue
+                if kind == RSP_ERROR:
+                    status = response[0] if response else 0xFF
+                    raise HardwareLinkError(f"A Placa A rejeitou o comando CDC (status {status}).")
+                if response_type is None or kind == response_type:
+                    return response
+            if attempt + 1 < retries:
+                logger.warning("Sem resposta CDC para sequência %d; repetindo", sequence)
+        raise HardwareLinkError(f"Sem resposta CDC para sequência {sequence}.")
+
+    def _get_caps(self) -> tuple:
+        data = self._request(CMD_HELLO, response_type=RSP_CAPS)
+        expected = struct.calcsize("<I7BHH")
+        if len(data) != expected:
+            raise HardwareLinkError(f"CAPS com tamanho inesperado: {len(data)} (esperado {expected}).")
+        return struct.unpack("<I7BHH", data)
+
+    def _set_param(self, effect: int, parameter: int, value: float) -> None:
+        self._request(
+            CMD_SET_PARAM,
+            struct.pack("<BBf", effect, parameter, value),
+            response_type=RSP_ACK,
+        )
 
     def close(self) -> None:
         if self._conn is not None and self._conn.is_open:

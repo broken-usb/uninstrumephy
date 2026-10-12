@@ -43,8 +43,10 @@ class HardwareWorker(QThread):
             else:
                 self.status.emit(f"Conectando à porta {link.port}…")
 
-            link.send_state(self.state, progress_cb=self.status.emit)
-            link.close()
+            try:
+                link.send_state(self.state, progress_cb=self.status.emit)
+            finally:
+                link.close()
 
             logger.info("Envio para a ESP32-S3 concluído.")
             self.finished.emit(was_mock)
