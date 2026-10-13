@@ -199,9 +199,6 @@
      <property name="text">
       <string>Valores mais altos de Shifts/Overlap aumentam a qualidade da separação, mas tornam o processamento mais lento.</string>
      </property>
-     <property name="styleSheet">
-      <string notr="true">color: #888; font-size: 11px;</string>
-     </property>
      <property name="wordWrap">
       <bool>true</bool>
      </property>

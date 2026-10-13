@@ -10,6 +10,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 
 from gui.ui_tab_demucs import Ui_TabDemucs
 from core.separator import AudioSeparator
+from gui import icons
 
 logger = logging.getLogger(__name__)
 
@@ -152,6 +153,8 @@ class TabDemucs(QWidget, Ui_TabDemucs):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setupUi(self)
+        self.btn_run_demucs.setProperty("role", "suggested")
+        icons.bind(self.btn_run_demucs.setIcon, "equalizer", "accent")
 
         self.combo_demucs_model.addItems(AudioSeparator.AVAILABLE_MODELS)
         self.combo_demucs_model.setCurrentText(AudioSeparator.MODEL_NAME)

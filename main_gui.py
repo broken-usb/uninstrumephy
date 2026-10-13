@@ -10,8 +10,8 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QSystemTrayIcon,
 )
-from PyQt6.QtCore import QThread, pyqtSignal, QUrl, Qt, QTimer
-from PyQt6.QtGui import QPixmap, QImage
+from PyQt6.QtCore import QSize, QThread, pyqtSignal, QUrl, Qt, QTimer
+from PyQt6.QtGui import QIcon, QPixmap, QImage
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 from tinytag import TinyTag
@@ -21,6 +21,7 @@ from gui.ui_mainwindow import Ui_Dialog
 from gui.tab_demucs import TabDemucs
 from gui.tab_tonematching import TabToneMatching
 from gui.tab_hardware import TabHardware
+from gui import icons, theme
 
 # Inicialização do Logging (console + output/logs/latest-log.txt)
 setup_logging()
@@ -107,7 +108,8 @@ class MainWindow(QDialog, Ui_Dialog):
         self.player_stem.setAudioOutput(self.audio_out_stem)
 
         self.tray_icon = QSystemTrayIcon(self)
-        app_icon = self.style().standardIcon(self.style().StandardPixmap.SP_MediaPlay)
+        app_icon = QIcon(icons.pixmap("pedal", 64, theme.tokens().accent))
+        self.setWindowIcon(app_icon)
         self.tray_icon.setIcon(app_icon)
         if QSystemTrayIcon.isSystemTrayAvailable():
             self.tray_icon.show()
@@ -118,13 +120,82 @@ class MainWindow(QDialog, Ui_Dialog):
         self.tab_tonematching = TabToneMatching()
         self.tab_hardware = TabHardware()
 
-        self.tabsMain.addTab(self.tab_demucs, "🎚  Separação (Demucs)")
-        self.tabsMain.addTab(self.tab_tonematching, "📊  Tone Matching")
-        self.tabsMain.addTab(self.tab_hardware, "🔌  Pedal (ESP32-S3)")
+        self.tabsMain.addTab(self.tab_demucs, "Separação (Demucs)")
+        self.tabsMain.addTab(self.tab_tonematching, "Tone Matching")
+        self.tabsMain.addTab(self.tab_hardware, "Pedal (ESP32-S3)")
+        self.tabsMain.setIconSize(QSize(18, 18))
+        for index, name in enumerate(("equalizer", "waveform", "pedal")):
+            icons.bind(lambda ic, i=index: self.tabsMain.setTabIcon(i, ic), name)
 
+        self._setup_appearance()
         self._connect_signals()
         self._apply_master_volume()
         logger.info("Aplicação inicializada.")
+
+    def _setup_appearance(self) -> None:
+        """Papéis visuais (ver gui/theme.py) e dicas de acessibilidade."""
+        self.btn_load.setProperty("role", "suggested")  # ação principal da janela
+
+        # Ícones (gui/icons/*.svg) no lugar dos símbolos de texto.
+        self.btn_load.setText(self.btn_load.text().lstrip("＋ ").strip())
+        icons.bind(self.btn_load.setIcon, "folder-open", "accent")
+        self.btn_record.setText(self.btn_record.text().lstrip("🎙 ").strip())
+        icons.bind(self.btn_record.setIcon, "microphone")
+        for btn in (self.btn_load, self.btn_record):
+            btn.setIconSize(QSize(18, 18))
+        for btn in (self.btn_stop_orig, self.btn_stop_guitar):
+            btn.setText("")
+            self._set_transport_icon(btn, "stop")
+        for btn in (self.btn_play_orig, self.btn_play_guitar):
+            btn.setText("")
+            self._set_transport_icon(btn, "play")
+        theme.on_change(self._refresh_transport_icons)
+        self._show_cover_placeholder("music-note")
+        for btn, tip in (
+            (self.btn_play_orig, "Reproduzir ou pausar a música original"),
+            (self.btn_stop_orig, "Parar a música original"),
+            (self.btn_play_guitar, "Reproduzir ou pausar a faixa isolada"),
+            (self.btn_stop_guitar, "Parar a faixa isolada"),
+        ):
+            btn.setProperty("role", "circular")
+            btn.setIconSize(QSize(16, 16))
+            btn.setToolTip(tip)
+            btn.setAccessibleName(tip)
+        self.tabsMain.setDocumentMode(True)
+
+        # --- Correções de layout: nada de alturas/larguras fixas que cortem conteúdo ---
+        unlimited = 16777215
+        for frame in (self.frameHeader, self.framePlayback):
+            frame.setMinimumHeight(0)
+            frame.setMaximumHeight(unlimited)  # a altura passa a seguir o conteúdo
+        self.btn_load.setMaximumWidth(unlimited)
+        self.btn_record.setMaximumWidth(unlimited)
+        self.setMinimumSize(860, 680)
+
+        # Alinha os dois blocos de reprodução: o da direita tem o seletor de faixa
+        # ao lado do título, então o da esquerda ganha a mesma altura de linha.
+        self.lbl_section_orig.setMinimumHeight(self.combo_stems.sizeHint().height())
+        self.combo_stems.setMinimumWidth(130)
+
+        # A capa já é reduzida mantendo a proporção; sem isto o Qt a esticaria.
+        self.lbl_cover.setScaledContents(False)
+        self.lbl_cover.setWordWrap(True)
+
+    def _set_transport_icon(self, button, name: str) -> None:
+        button.setProperty("icon_name", name)
+        button.setIcon(icons.icon(name))
+
+    def _refresh_transport_icons(self) -> None:
+        """Recolore os ícones de reprodução quando o tema muda."""
+        for btn in (self.btn_play_orig, self.btn_stop_orig, self.btn_play_guitar, self.btn_stop_guitar):
+            name = btn.property("icon_name")
+            if name:
+                btn.setIcon(icons.icon(name))
+
+    def _show_cover_placeholder(self, name: str) -> None:
+        """Ícone no lugar da capa quando não há imagem."""
+        self.lbl_cover.clear()
+        icons.bind_pixmap(self.lbl_cover, name, 72)
 
     def _connect_signals(self) -> None:
         self.btn_load.clicked.connect(self.load_audio_file)
@@ -207,8 +278,7 @@ class MainWindow(QDialog, Ui_Dialog):
             f"Arquivo: {Path(filepath).name}\n"
             f"Demucs: Ignorado (Faixa já isolada)"
         )
-        self.lbl_cover.clear()
-        self.lbl_cover.setText("🎸")
+        self._show_cover_placeholder("plug")
 
         self.btn_play_orig.setEnabled(True)
         self.btn_stop_orig.setEnabled(False)
@@ -266,8 +336,7 @@ class MainWindow(QDialog, Ui_Dialog):
         self.lbl_filepath.setText(Path(file_name).name)
         self.lbl_info.setText("Carregando metadados…")
         self.lbl_metadata.setText("Carregando metadados…")
-        self.lbl_cover.clear()
-        self.lbl_cover.setText("♪")
+        self._show_cover_placeholder("music-note")
 
         if self.metadata_thread is not None:
             # Não bloqueamos a UI esperando a thread antiga terminar:
@@ -329,6 +398,7 @@ class MainWindow(QDialog, Ui_Dialog):
                 img = QImage()
                 if img.loadFromData(image_data):
                     pixmap = QPixmap.fromImage(img)
+                    icons.clear_label_icon(self.lbl_cover)
                     self.lbl_cover.setPixmap(
                         pixmap.scaled(
                             180,
@@ -339,11 +409,11 @@ class MainWindow(QDialog, Ui_Dialog):
                     )
                     self.lbl_cover.setText("")
                 else:
-                    self.lbl_cover.setText("♪")
+                    self._show_cover_placeholder("music-note")
             except Exception:
-                self.lbl_cover.setText("♪")
+                self._show_cover_placeholder("music-note")
         else:
-            self.lbl_cover.setText("♪")
+            self._show_cover_placeholder("music-note")
 
         self.btn_play_orig.setEnabled(True)
         self.btn_stop_orig.setEnabled(False)
@@ -362,7 +432,7 @@ class MainWindow(QDialog, Ui_Dialog):
 
         self.lbl_info.setText(f"{Path(self.path_original).stem}  |  --:--")
         self.lbl_metadata.setText("Sem metadados.")
-        self.lbl_cover.setText("♪")
+        self._show_cover_placeholder("music-note")
         self.btn_play_orig.setEnabled(True)
         self.btn_stop_orig.setEnabled(False)
         self._set_status("Música carregada.")
@@ -512,7 +582,7 @@ class MainWindow(QDialog, Ui_Dialog):
     def _on_orig_state_changed(self, state: QMediaPlayer.PlaybackState) -> None:
         playing = state == QMediaPlayer.PlaybackState.PlayingState
         paused = state == QMediaPlayer.PlaybackState.PausedState
-        self.btn_play_orig.setText("⏸" if playing else "▶")
+        self._set_transport_icon(self.btn_play_orig, "pause" if playing else "play")
         self.btn_stop_orig.setEnabled(playing or paused)
 
     def toggle_stem(self) -> None:
@@ -547,7 +617,7 @@ class MainWindow(QDialog, Ui_Dialog):
     def _on_stem_state_changed(self, state: QMediaPlayer.PlaybackState) -> None:
         playing = state == QMediaPlayer.PlaybackState.PlayingState
         paused = state == QMediaPlayer.PlaybackState.PausedState
-        self.btn_play_guitar.setText("⏸" if playing else "▶")
+        self._set_transport_icon(self.btn_play_guitar, "pause" if playing else "play")
         self.btn_stop_guitar.setEnabled(playing or paused)
 
     def _on_stem_selection_changed(self, new_stem: str) -> None:
@@ -617,6 +687,7 @@ class MainWindow(QDialog, Ui_Dialog):
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
+    theme.install(app)  # claro/escuro seguindo o sistema
     window = MainWindow()
     window.showMaximized()
     sys.exit(app.exec())

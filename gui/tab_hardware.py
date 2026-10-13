@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import QWidget, QMessageBox, QInputDialog
 from PyQt6.QtCore import QThread, pyqtSignal
 
 from gui.ui_tab_hardware import Ui_TabHardware
+from gui import icons
 from gui.effect_widget import EffectWidget
 from core.effects_spec import EFFECT_SPECS
 from core.hardware import ESP32Link, HardwareLinkError, PedalState
@@ -69,6 +70,14 @@ class TabHardware(QWidget, Ui_TabHardware):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setupUi(self)
+
+        # Papéis visuais (ver gui/theme.py): uma ação principal por tela.
+        self.btn_send_hardware.setProperty("role", "suggested")
+        self.btn_delete_preset.setProperty("role", "destructive")
+        icons.bind(self.btn_send_hardware.setIcon, "upload", "accent")
+        icons.bind(self.btn_load_preset.setIcon, "folder-open")
+        icons.bind(self.btn_save_preset.setIcon, "save")
+        icons.bind(self.btn_delete_preset.setIcon, "trash", "danger")
 
         self.hardware_thread: HardwareWorker | None = None
 

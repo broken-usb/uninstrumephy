@@ -10,6 +10,7 @@ from PyQt6.QtCore import QThread, pyqtSignal
 from gui.ui_tab_tonematching import Ui_TabToneMatching
 from gui.plots import WaveformPlot, EQCurvePlot, SpectralCentroidPlot
 from core.analyzer import AudioAnalyzer
+from gui import icons
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +55,8 @@ class TabToneMatching(QWidget, Ui_TabToneMatching):
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
         self.setupUi(self)
+        self.btn_run_analysis.setProperty("role", "suggested")
+        icons.bind(self.btn_run_analysis.setIcon, "waveform", "accent")
 
         self.waveform_plot = WaveformPlot()
         self.waveformContainerLayout.addWidget(self.waveform_plot)

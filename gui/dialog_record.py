@@ -8,8 +8,9 @@ from PyQt6.QtWidgets import (
     QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
     QPushButton, QProgressBar, QCheckBox, QGroupBox, QMessageBox
 )
-from PyQt6.QtCore import Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import QSize, Qt, QTimer, pyqtSignal
 
+from gui import icons, theme
 from core.audio_recorder import (
     list_input_devices,
     list_output_devices,
@@ -40,6 +41,7 @@ class RecordDialog(QDialog):
 
         self._init_ui()
         self._refresh_device_list()
+        theme.on_change(self._refresh_icons)
         # A UAC pode ser enumerada depois de o diálogo abrir. Atualizamos a
         # lista somente quando ela mudou e nunca durante gravação/monitor.
         self._device_refresh_timer = QTimer(self)
@@ -58,8 +60,9 @@ class RecordDialog(QDialog):
         input_row = QHBoxLayout()
         input_row.addWidget(QLabel("Entrada UAC:"))
         self.combo_devices = QComboBox()
-        self.btn_refresh = QPushButton("🔄 Atualizar")
-        self.btn_refresh.setFixedWidth(90)
+        self.combo_devices.setIconSize(QSize(16, 16))
+        self.btn_refresh = QPushButton("Atualizar")
+        self._set_action(self.btn_refresh, "Atualizar", "refresh")
         self.btn_refresh.clicked.connect(self._refresh_device_list)
         input_row.addWidget(self.combo_devices, 1)
         input_row.addWidget(self.btn_refresh)
@@ -68,8 +71,10 @@ class RecordDialog(QDialog):
         output_row = QHBoxLayout()
         output_row.addWidget(QLabel("Saída para escutar:"))
         self.combo_outputs = QComboBox()
+        self.combo_outputs.setIconSize(QSize(16, 16))
         output_row.addWidget(self.combo_outputs, 1)
-        self.btn_monitor_toggle = QPushButton("▶ Monitorar ao vivo")
+        self.btn_monitor_toggle = QPushButton()
+        self._set_action(self.btn_monitor_toggle, "Monitorar ao vivo", "play")
         self.btn_monitor_toggle.setToolTip(
             "Reproduz em tempo real o áudio processado recebido pela UAC da Placa A"
         )
@@ -99,7 +104,7 @@ class RecordDialog(QDialog):
 
         self.lbl_timer = QLabel("Tempo: 00:00 / 00:15")
         self.lbl_timer.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_timer.setStyleSheet("font-size: 13px; font-weight: bold;")
+        self.lbl_timer.setProperty("role", "heading")  # estilo em gui/theme.py
         l_meter.addWidget(self.lbl_timer)
 
         self.meter_bar = QProgressBar()
@@ -107,33 +112,25 @@ class RecordDialog(QDialog):
         self.meter_bar.setValue(0)
         self.meter_bar.setTextVisible(False)
         self.meter_bar.setFixedHeight(16)
-        self.meter_bar.setStyleSheet("""
-            QProgressBar {
-                border: 1px solid rgba(128, 128, 128, 0.4);
-                border-radius: 4px;
-                background-color: rgba(0, 0, 0, 0.08);
-            }
-            QProgressBar::chunk {
-                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
-                    stop:0 #38a169, stop:0.75 #d69e2e, stop:0.95 #e53e3e);
-                border-radius: 3px;
-            }
-        """)
+        self.meter_bar.setProperty("role", "meter")  # estilo em gui/theme.py
+        self.meter_bar.setAccessibleName("Nível de entrada")
         l_meter.addWidget(self.meter_bar)
         layout.addWidget(grp_meter)
 
         self.chk_auto_tone = QCheckBox("Pular Demucs e executar Tone Matching automaticamente")
         self.chk_auto_tone.setChecked(True)
-        self.chk_auto_tone.setStyleSheet("font-weight: bold; color: #2b6cb0;")
+        self.chk_auto_tone.setProperty("role", "emphasis")  # estilo em gui/theme.py
         layout.addWidget(self.chk_auto_tone)
 
         # 4. Botões de Ação
         l_actions = QHBoxLayout()
-        self.btn_record_toggle = QPushButton("🔴 Iniciar Gravação")
-        self.btn_record_toggle.setStyleSheet("font-weight: bold; padding: 6px 14px;")
+        self.btn_record_toggle = QPushButton()
+        self._set_action(self.btn_record_toggle, "Iniciar Gravação", "record", "record")
         self.btn_record_toggle.clicked.connect(self._toggle_recording)
 
-        self.btn_accept = QPushButton("✅ Usar Gravação")
+        self.btn_accept = QPushButton()
+        self.btn_accept.setProperty("role", "suggested")  # ação que conclui o diálogo
+        self._set_action(self.btn_accept, "Usar Gravação", "check", "accent")
         self.btn_accept.setEnabled(False)
         self.btn_accept.clicked.connect(self._accept_recording)
 
@@ -144,6 +141,28 @@ class RecordDialog(QDialog):
         l_actions.addWidget(self.btn_accept)
         l_actions.addWidget(self.btn_cancel)
         layout.addLayout(l_actions)
+
+    _ICON_ROLE = Qt.ItemDataRole.UserRole + 1
+
+    def _set_action(self, button: QPushButton, text: str, icon_name: str, tone: str = "normal") -> None:
+        """Define texto e ícone de um botão; o ícone é recolorido se o tema mudar."""
+        button.setText(text)
+        button.setProperty("icon_name", icon_name)
+        button.setProperty("icon_tone", tone)
+        button.setIcon(icons.icon(icon_name, tone))
+        button.setIconSize(QSize(18, 18))
+
+    def _refresh_icons(self) -> None:
+        """Recolore os ícones dos botões e das listas quando o tema muda."""
+        for btn in (self.btn_refresh, self.btn_monitor_toggle, self.btn_record_toggle, self.btn_accept):
+            name = btn.property("icon_name")
+            if name:
+                btn.setIcon(icons.icon(name, btn.property("icon_tone") or "normal"))
+        for combo in (self.combo_devices, self.combo_outputs):
+            for i in range(combo.count()):
+                name = combo.itemData(i, self._ICON_ROLE)
+                if name:
+                    combo.setItemIcon(i, icons.icon(name))
 
     def _refresh_device_list(self) -> None:
         self.combo_devices.clear()
@@ -164,13 +183,16 @@ class RecordDialog(QDialog):
         selected_output_idx = 0
 
         for idx, d in enumerate(devices):
-            prefix = "🎸 ESP32-S3: " if d["is_esp32"] else "🎙 "
-            self.combo_devices.addItem(f"{prefix}{d['name']}", d["index"])
+            label = f"ESP32-S3: {d['name']}" if d["is_esp32"] else d["name"]
+            icon_name = "plug" if d["is_esp32"] else "microphone"
+            self.combo_devices.addItem(icons.icon(icon_name), label, d["index"])
+            self.combo_devices.setItemData(self.combo_devices.count() - 1, icon_name, self._ICON_ROLE)
             if d["index"] == default_idx:
                 selected_combo_idx = idx
 
         for idx, d in enumerate(outputs):
-            self.combo_outputs.addItem(f"🔊 {d['name']}", d["index"])
+            self.combo_outputs.addItem(icons.icon("speaker"), d["name"], d["index"])
+            self.combo_outputs.setItemData(self.combo_outputs.count() - 1, "speaker", self._ICON_ROLE)
             if d["index"] == default_output:
                 selected_output_idx = idx
 
@@ -242,7 +264,7 @@ class RecordDialog(QDialog):
         )
         self.monitor_thread.finished.connect(self._on_monitor_finished)
         self.monitor_thread.start()
-        self.btn_monitor_toggle.setText("⏹ Parar monitor")
+        self._set_action(self.btn_monitor_toggle, "Parar monitor", "stop")
         self.combo_devices.setEnabled(False)
         self.combo_outputs.setEnabled(False)
         self.btn_refresh.setEnabled(False)
@@ -259,7 +281,7 @@ class RecordDialog(QDialog):
         self._restore_device_controls()
 
     def _restore_device_controls(self) -> None:
-        self.btn_monitor_toggle.setText("▶ Monitorar ao vivo")
+        self._set_action(self.btn_monitor_toggle, "Monitorar ao vivo", "play")
         self.btn_monitor_toggle.setEnabled(
             self.combo_devices.currentData() is not None
             and self.combo_outputs.currentData() is not None
@@ -305,7 +327,7 @@ class RecordDialog(QDialog):
         self.recorder_thread.error.connect(self._on_record_error)
         self.recorder_thread.status_msg.connect(self._on_record_status)
 
-        self.btn_record_toggle.setText("⏹ Parar Gravação")
+        self._set_action(self.btn_record_toggle, "Parar Gravação", "stop")
         self.btn_record_toggle.setEnabled(True)
         self.combo_devices.setEnabled(False)
         self.combo_duration.setEnabled(False)
@@ -330,7 +352,7 @@ class RecordDialog(QDialog):
         self.recorded_filepath = filepath
         self.meter_bar.setValue(0)
         self.lbl_timer.setText("Gravação Concluída com Sucesso!")
-        self.btn_record_toggle.setText("🔴 Gravar Novamente")
+        self._set_action(self.btn_record_toggle, "Gravar Novamente", "record", "record")
         self.btn_record_toggle.setEnabled(True)
         self.btn_accept.setEnabled(True)
         self.combo_devices.setEnabled(True)
@@ -341,7 +363,7 @@ class RecordDialog(QDialog):
         QMessageBox.critical(self, "Erro de Gravação", err_msg)
         self.meter_bar.setValue(0)
         self.lbl_timer.setText("Falha na Gravação")
-        self.btn_record_toggle.setText("🔴 Iniciar Gravação")
+        self._set_action(self.btn_record_toggle, "Iniciar Gravação", "record", "record")
         self.btn_record_toggle.setEnabled(True)
         self.combo_devices.setEnabled(True)
         self.combo_duration.setEnabled(True)
