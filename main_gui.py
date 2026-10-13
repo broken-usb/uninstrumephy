@@ -139,6 +139,7 @@ class MainWindow(QDialog, Ui_Dialog):
         # Ícones (gui/icons/*.svg) no lugar dos símbolos de texto.
         self.btn_load.setText(self.btn_load.text().lstrip("＋ ").strip())
         icons.bind(self.btn_load.setIcon, "folder-open", "accent")
+        self.btn_record.setText(self.btn_record.text().lstrip("🎙 ").strip())
         icons.bind(self.btn_record.setIcon, "microphone")
         for btn in (self.btn_load, self.btn_record):
             btn.setIconSize(QSize(18, 18))

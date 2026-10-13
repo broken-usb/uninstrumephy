@@ -317,6 +317,16 @@ QProgressBar {{
 }}
 QProgressBar::chunk {{ background: {t.accent}; border-radius: 3px; }}
 
+QProgressBar[role="meter"] {{
+    background: {t.surface}; border: 1px solid {t.border}; border-radius: 4px;
+}}
+QProgressBar[role="meter"]::chunk {{
+    border-radius: 3px;
+    background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+        stop:0 {t.success}, stop:0.75 {t.warning}, stop:0.95 {t.danger});
+}}
+QCheckBox[role="emphasis"] {{ font-weight: bold; }}
+
 /* ---------- abas ---------- */
 QTabWidget::pane {{ border: none; border-top: 1px solid {t.border}; background: {t.window}; top: -1px; }}
 QTabBar {{ background: transparent; }}
