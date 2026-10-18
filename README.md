@@ -1,139 +1,180 @@
-Interface gráfica inteligente para **Tone Matching** (casamento de timbres de guitarra) automatizado. O software utiliza Inteligência Artificial para separar os instrumentos de uma música de referência e Processamento Digital de Sinais (DSP) para extrair os parâmetros físicos ideais para emulação em hardware (como placas ESP32).
+# Uninstrumephy
 
----
+Interface gráfica em Python (Qt6) para **Tone Matching** automatizado: casamento de timbres de guitarra a partir de uma música de referência.
 
-## Funcionalidades principais
+O software usa Inteligência Artificial para separar os instrumentos da faixa e Processamento Digital de Sinais (DSP) para extrair os parâmetros ideais de emulação em hardware (como placas ESP32).
 
-* **Carregamento de Mídia:** Extração automática de metadados e capa do álbum.
-* **Reprodutor de Áudio Independente:** Dois motores de reprodução na memória (música original vs. faixas isoladas) com sliders de tempo (*seek*) e volume independentes.
-* **Separação de Faixas por IA:** Integração nativa do modelo **Demucs v4 (htdemucs_6s)** com suporte a aceleração por GPU (NVIDIA CUDA).
-* **Análise de Sinais (MIR):** Extração matemática via **Librosa** da curva de equalização ideal (Bass, Mid, Treble) e do limiar do Noise Gate.
-* **Escuta da pedaleira em tempo real:** a captura UAC mono processada da Placa A pode ser encaminhada, sem salvar primeiro em disco, para fones ou caixas selecionados no diálogo de gravação.
-* **Controle CDC da Placa A:** o envio de parâmetros usa o protocolo v2 do firmware (COBS, CRC-8, sequência e confirmação), incluindo os efeitos novos. O simulador antigo que enviava um bloco COBS de 140 bytes não é usado em hardware.
+> **Status:** projeto em desenvolvimento. Suporte oficial apenas ao Linux.
 
-## Escutar a pedaleira no computador
+## Sumário
 
-1. Conecte a USB nativa da **Placa A** e aguarde o dispositivo composto aparecer. A Placa A anuncia uma entrada UAC de 44,1 kHz, mono, 24 bits em slot de 32 bits, contendo o sinal **depois do DSP**.
-2. Abra **Gravação Direta — ESP32-S3 / Microfone** pelo botão de gravação da janela principal.
-3. Em **Entrada UAC**, selecione `ESP32-S3 Processed Audio` (ou o nome equivalente exibido pelo sistema). Em **Saída para escutar**, selecione fones/caixas do computador.
-4. Clique em **Monitorar ao vivo**. O aplicativo abre um fluxo duplex do PortAudio a 44,1 kHz e copia o canal mono da pedaleira para a saída selecionada. O medidor mostra o pico recebido.
-5. Para encerrar, clique em **Parar monitor**. A gravação em WAV continua disponível separadamente pelo botão **Iniciar Gravação**. O monitor usa o menor bloco nativo do backend (`blocksize=0`) e exibe a latência de entrada/saída reportada pelo PortAudio.
+- [Funcionalidades](#funcionalidades)
+- [Requisitos](#requisitos)
+- [Instalação](#instalação)
+- [Uso](#uso)
+- [Integração com o hardware (Placa A)](#integração-com-o-hardware-placa-a)
+  - [Controle via CDC](#controle-via-cdc)
+  - [Presets de demonstração](#presets-de-demonstração)
+  - [Escutar a pedaleira no computador](#escutar-a-pedaleira-no-computador)
+  - [Solução de problemas](#solução-de-problemas)
+- [Estrutura do repositório](#estrutura-do-repositório)
+- [Licença](#licença)
 
-O firmware atual não implementa reprodução de áudio do computador para a pedaleira: a interface USB é captura UAC + CDC de controle. O monitoramento acima é a reprodução local no computador e não altera o sinal enviado ao DAC. Se a saída escolhida não aceitar 44,1 kHz mono, o diálogo informa o erro; selecione outra saída ou ajuste o dispositivo no sistema operacional.
+## Funcionalidades
 
-Para monitorar em uma DAW, fixe projeto, entrada e saída em 44,1 kHz, use
-buffer de 64 ou 128 amostras e mantenha apenas um monitoramento ativo. Prefira
-fone/caixa com fio; buffers do sistema, PipeWire/ALSA e a própria saída podem
-ser maiores que os valores configurados na DAW. Avisos de `input/output
-underflow/overflow` exibidos pelo PortAudio indicam que o host está perdendo
-blocos; reduza o trabalho do computador ou aumente a DAW para 128 amostras.
+- **Carregamento de mídia:** extração automática de metadados e capa do álbum.
+- **Reprodutor de áudio independente:** dois motores de reprodução em memória (música original e faixas isoladas), cada um com controles próprios de tempo (*seek*) e volume.
+- **Separação de faixas por IA:** integração nativa com o modelo **Demucs v4 (`htdemucs_6s`)**, com aceleração por GPU NVIDIA (CUDA).
+- **Análise de sinais (MIR):** extração, via **Librosa**, da curva de equalização ideal (Bass, Mid, Treble) e do limiar do Noise Gate.
+- **Controle da Placa A via CDC:** envio de parâmetros pelo protocolo v2 do firmware (COBS, CRC-8, sequência e confirmação), incluindo os efeitos novos.
+- **Escuta da pedaleira em tempo real:** o áudio mono processado capturado via UAC é encaminhado direto para fones ou caixas, sem passar pelo disco.
 
-O diálogo atualiza entradas e saídas automaticamente enquanto está parado e
-seleciona a UAC da ESP32 quando ela é enumerada. Se a placa for conectada
-depois da abertura, use **Atualizar** ou aguarde a próxima atualização. Uma
-entrada genérica de 48 kHz não pode ser usada como substituta da UAC de 44,1
-kHz; nesse caso o aplicativo identifica o dispositivo selecionado e orienta a
-escolher `ESP32-S3 Processed Audio`.
+## Requisitos
 
-Se aparecer `Device unavailable`, outra captura pode estar usando a interface
-ALSA em modo exclusivo. Pare o gravador anterior (ou `arecord`), aguarde a
-UAC liberar o dispositivo e inicie o monitor novamente.
+- Linux
+- Python **3.12 ou superior** (recomendado: **3.14+**)
+- FFmpeg
+- Conjunto completo de dependências do `requirements.txt`
 
-### Controle da placa
+O Demucs (Torch) é obrigatório, pois a separação de guitarra faz parte do fluxo principal. Sem ele, o programa interrompe a inicialização em vez de ocultar a funcionalidade.
 
-Ao clicar em **Enviar para hardware**, a aba de hardware faz um `HELLO` CDC, confere taxa, canais e tamanho de estado e envia os campos individualmente com `SET_PARAM` absoluto. Cada quadro tem cabeçalho versão 2 (`version`, `type`, `sequence` little-endian), payload, CRC-8 polinômio `0x07`, codificação COBS e terminador `0x00`. A aplicação repete comandos sem resposta e o firmware deduplica a última mutação por sequência/CRC. O cab sim (efeito 8) só é enviado quando o `effect_mask` de `CAPS` anuncia `EFFECT_CAP_CAB_SIM`; assim o mesmo cliente funciona tanto com o perfil padrão (`ENABLE_CAB_SIM=0`) quanto com o ambiente `*-cab`.
+Principais bibliotecas: `PyQt6`, `sounddevice`, `soundfile`, `numpy`, `pyserial`, `tinytag` (metadados), `librosa` e `matplotlib` (aba de Tone Matching).
 
-### Presets de demonstração
+## Instalação
 
-O aplicativo já inclui quatro presets JSON em `presets/`, que aparecem na lista
-da aba **Hardware**:
+1. **Instale o Python (mínimo 3.12, recomendado 3.14+) e o FFmpeg**
 
-* **Clean Chorus** — compressor leve, modulação/chorus, equalização aberta e
-  reverb curto para bases limpas;
-* **Blues Drive** — overdrive moderado, médios destacados, delay curto e
-  reverb discreto para fraseados;
-* **Ambient Phaser** — phaser lento, modulação profunda, delay e reverb longos
-  para sons ambientes;
-* **Lo-Fi Tremolo** — bitcrusher, tremolo triangular e overdrive para um timbre
-  degradado e rítmico.
+   | Distribuição | Python | FFmpeg |
+   | --- | --- | --- |
+   | Ubuntu/Debian | `sudo apt update && sudo apt install python3-full` | `sudo apt install ffmpeg` |
+   | Arch | `sudo pacman -S python` | `sudo pacman -S ffmpeg` |
+   | RHEL/Fedora | `sudo dnf install python` | `sudo dnf swap ffmpeg-free ffmpeg --allowerasing` (requer RPM Fusion) |
 
-Selecione um nome, clique em **Carregar preset** para preencher os controles e
-em **Enviar para hardware** para publicar o estado na Placa A. Os arquivos são
-editáveis e mantêm os valores exibidos pela interface; o firmware valida e
-limita cada parâmetro antes de aplicá-lo.
+   > Verifique a versão com `python3 --version`. A versão mínima é a 3.12, mas recomendamos a 3.14 ou superior. Se o repositório da sua distribuição não oferece a versão desejada, instale-a por outro meio (por exemplo, `uv python install 3.14`).
 
-O aplicativo exige o conjunto completo de dependências do `requirements.txt`. O
-Demucs é obrigatório porque a separação de guitarra faz parte do fluxo
-principal; sem Torch/Demucs o programa deve interromper a inicialização em vez
-de ocultar essa funcionalidade. O monitor USB também requer `PyQt6`,
-`sounddevice`, `soundfile`, `numpy` e `pyserial`.
+2. **Clone o repositório**
 
-Se o ambiente virtual já estiver em `../.venv`, a instalação mínima pode ser feita com:
+   ```bash
+   git clone https://github.com/broken-usb/uninstrumephy.git
+   cd uninstrumephy
+   ```
 
-```bash
-uv pip install --python ../.venv/bin/python -r requirements.txt
-uv run main_gui.py
-```
+3. **Crie e ative o ambiente virtual**
 
-`tinytag` é usado para ler metadados dos arquivos carregados. Librosa e
-Matplotlib também fazem parte da aba de Tone Matching e são carregados durante
-a inicialização.
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate
+   ```
 
----
+4. **Instale as dependências**
 
-## Como Instalar e Rodar
+   ```bash
+   pip install --upgrade pip
+   pip install -r requirements.txt
+   ```
 
-Atualmente o projeto só tem suporte oficial ao Linux e dentro de ambientes virtuais do Python 3.14 ou superior.
+   Alternativa com [uv](https://docs.astral.sh/uv/):
 
-1. **Instale o Python 3.14+**
-```bash
-sudo apt update && sudo apt install python3-full # Ubuntu
-```
+   ```bash
+   uv venv --python 3.14
+   uv pip install -r requirements.txt
+   ```
 
-```bash
-sudo pacman -S python # Arch
-```
+## Uso
 
-```bash
-sudo dnf install python # RHEL/Fedora
-```
+Com o ambiente virtual ativo:
 
-2. **Instale o FFmpeg**
-```bash
-sudo apt update && sudo apt install ffmpeg # Ubuntu
-```
-
-```bash
-sudo pacman -S ffmpeg # Arch
-```
-
-```bash
-sudo dnf swap ffmpeg-free ffmpeg --allowerasing # RHEL/Fedora, Precisa do RPM Fusion
-```
-
-3. **Clone o repositório:**
-```bash
-git clone https://github.com/broken-usb/uninstrumephy.git
-cd uninstrumephy
-```
-
-4. **Crie e ative seu ambiente virtual (`venv`):**
-```bash
-python -m venv .venv
-```
-```bash
-source .venv/bin/activate # Linux (Bash)
-```
-
-5. **Instale as dependências:**
-```bash
-pip install --upgrade pip
-```
-```bash
-pip install -r requirements.txt
-```
-
-6. **Execute o aplicativo:**
 ```bash
 python main_gui.py
 ```
+
+Com `uv`:
+
+```bash
+uv run main_gui.py
+```
+
+## Integração com o hardware (Placa A)
+
+Esta seção só é necessária se você usa a Placa A (ESP32-S3) conectada pela USB nativa.
+
+### Controle via CDC
+
+Ao clicar em **Enviar para hardware**, a aba Hardware:
+
+1. faz um `HELLO` CDC e confere taxa, canais e tamanho de estado;
+2. envia cada campo individualmente com `SET_PARAM` absoluto.
+
+Cada quadro segue o formato abaixo:
+
+| Etapa | Descrição |
+| --- | --- |
+| Cabeçalho (versão 2) | `version`, `type` e `sequence` (little-endian) |
+| Payload | Dados do comando |
+| Integridade | CRC-8, polinômio `0x07` |
+| Codificação | COBS, com terminador `0x00` |
+
+A aplicação reenvia comandos sem resposta, e o firmware deduplica a última mutação por sequência/CRC.
+
+O *cab sim* (efeito 8) só é enviado quando o `effect_mask` de `CAPS` anuncia `EFFECT_CAP_CAB_SIM`. Assim, o mesmo cliente funciona tanto com o perfil padrão (`ENABLE_CAB_SIM=0`) quanto com o ambiente `*-cab`.
+
+> O simulador antigo, que enviava um bloco COBS de 140 bytes, não é usado em hardware.
+
+### Presets de demonstração
+
+O diretório `presets/` traz quatro presets JSON, listados na aba **Hardware**:
+
+| Preset | Descrição |
+| --- | --- |
+| **Clean Chorus** | Compressor leve, chorus, equalização aberta e reverb curto, para bases limpas |
+| **Blues Drive** | Overdrive moderado, médios destacados, delay curto e reverb discreto, para fraseados |
+| **Ambient Phaser** | Phaser lento, modulação profunda, delay e reverb longos, para sons ambientes |
+| **Lo-Fi Tremolo** | Bitcrusher, tremolo triangular e overdrive, para um timbre degradado e rítmico |
+
+Para usar: selecione um preset, clique em **Carregar preset** para preencher os controles e em **Enviar para hardware** para aplicar o estado na Placa A.
+
+Os arquivos são editáveis e mantêm os valores exibidos pela interface. O firmware valida e limita cada parâmetro antes de aplicá-lo.
+
+### Escutar a pedaleira no computador
+
+A Placa A anuncia uma entrada UAC de **44,1 kHz, mono, 24 bits em slot de 32 bits**, com o sinal **depois do DSP**.
+
+1. Conecte a USB nativa da Placa A e aguarde o dispositivo composto aparecer.
+2. Abra **Gravação Direta — ESP32-S3 / Microfone** pelo botão de gravação da janela principal.
+3. Em **Entrada UAC**, selecione `ESP32-S3 Processed Audio` (ou o nome equivalente exibido pelo sistema). Em **Saída para escutar**, selecione fones ou caixas do computador.
+4. Clique em **Monitorar ao vivo**. O aplicativo abre um fluxo duplex do PortAudio a 44,1 kHz e copia o canal mono da pedaleira para a saída escolhida. O medidor mostra o pico recebido.
+5. Para encerrar, clique em **Parar monitor**.
+
+Detalhes importantes:
+
+- A gravação em WAV é independente e continua disponível em **Iniciar Gravação**.
+- O monitor usa o menor bloco nativo do backend (`blocksize=0`) e exibe a latência de entrada/saída reportada pelo PortAudio.
+- O firmware atual **não** reproduz áudio do computador na pedaleira: a interface USB é captura UAC + CDC de controle. O monitoramento é apenas reprodução local e não altera o sinal enviado ao DAC.
+- O diálogo atualiza entradas e saídas automaticamente enquanto está parado e seleciona a UAC da ESP32 quando ela é enumerada. Se a placa for conectada depois, use **Atualizar**.
+
+**Monitorando em uma DAW:** fixe projeto, entrada e saída em 44,1 kHz, use buffer de 64 ou 128 amostras e mantenha apenas um monitoramento ativo. Prefira fones ou caixas com fio: os buffers do sistema (PipeWire/ALSA) e da própria saída podem ser maiores que os configurados na DAW.
+
+### Solução de problemas
+
+| Sintoma | O que fazer |
+| --- | --- |
+| Saída não aceita 44,1 kHz mono | O diálogo informa o erro. Escolha outra saída ou ajuste o dispositivo no sistema operacional. |
+| Entrada genérica de 48 kHz selecionada | Ela não substitui a UAC de 44,1 kHz. Escolha `ESP32-S3 Processed Audio`. |
+| `Device unavailable` | Outra captura pode estar usando a interface ALSA em modo exclusivo. Pare o gravador anterior (ou `arecord`), aguarde a UAC liberar o dispositivo e inicie o monitor novamente. |
+| Avisos de `input/output underflow/overflow` | O host está perdendo blocos. Reduza a carga do computador ou aumente o buffer da DAW para 128 amostras. |
+
+## Estrutura do repositório
+
+```text
+.
+├── core/              # Lógica principal (separação, análise, protocolo)
+├── gui/               # Interface Qt6
+├── presets/           # Presets JSON de demonstração
+├── tests/             # Testes
+├── main_gui.py        # Ponto de entrada
+└── requirements.txt   # Dependências
+```
+
+## Licença
+
+Distribuído sob a licença **GPL-3.0**. Veja o arquivo [COPYING](COPYING).
