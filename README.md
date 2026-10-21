@@ -18,6 +18,7 @@ O software usa Inteligência Artificial para separar os instrumentos da faixa e 
   - [Escutar a pedaleira no computador](#escutar-a-pedaleira-no-computador)
   - [Solução de problemas](#solução-de-problemas)
 - [Estrutura do repositório](#estrutura-do-repositório)
+- [Créditos](#créditos)
 - [Licença](#licença)
 
 ## Funcionalidades
@@ -78,6 +79,12 @@ Principais bibliotecas: `PyQt6`, `sounddevice`, `soundfile`, `numpy`, `pyserial`
    ```bash
    uv venv --python 3.14
    uv pip install -r requirements.txt
+   ```
+
+   Se você já tem um ambiente virtual em `../.venv`, é possível reaproveitá-lo:
+
+   ```bash
+   uv pip install --python ../.venv/bin/python -r requirements.txt
    ```
 
 ## Uso
@@ -174,6 +181,10 @@ Detalhes importantes:
 ├── main_gui.py        # Ponto de entrada
 └── requirements.txt   # Dependências
 ```
+
+## Créditos
+
+- **Ícone do aplicativo:** "Guitar bass head icon" by [Delapouite](https://delapouite.com) under [CC BY 3.0](http://creativecommons.org/licenses/by/3.0/).
 
 ## Licença
 

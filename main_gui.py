@@ -89,6 +89,23 @@ class MetadataWorker(QThread):
             self.error.emit(traceback.format_exc())
 
 
+def _load_app_icon() -> QIcon:
+    """
+    Ícone do aplicativo (janela, barra de tarefas e bandeja).
+    Usa gui/icons/app.svg (escalável) e gui/icons/app.png; se nenhum existir,
+    cai para um ícone de pedal gerado pelo tema.
+    """
+    icon_dir = Path(__file__).resolve().parent / "gui" / "icons"
+    icon = QIcon()
+    for name in ("app.svg", "app.png"):
+        file = icon_dir / name
+        if file.exists():
+            icon.addFile(str(file))
+    if icon.isNull():
+        icon = QIcon(icons.pixmap("pedal", 64, theme.tokens().accent))
+    return icon
+
+
 class MainWindow(QDialog, Ui_Dialog):
     def __init__(self) -> None:
         super().__init__()
@@ -108,7 +125,7 @@ class MainWindow(QDialog, Ui_Dialog):
         self.player_stem.setAudioOutput(self.audio_out_stem)
 
         self.tray_icon = QSystemTrayIcon(self)
-        app_icon = QIcon(icons.pixmap("pedal", 64, theme.tokens().accent))
+        app_icon = _load_app_icon()
         self.setWindowIcon(app_icon)
         self.tray_icon.setIcon(app_icon)
         if QSystemTrayIcon.isSystemTrayAvailable():
@@ -686,8 +703,14 @@ class MainWindow(QDialog, Ui_Dialog):
 
 
 if __name__ == "__main__":
+    if sys.platform == "win32":
+        # Faz a barra de tarefas do Windows usar o ícone do app (e não o do Python).
+        import ctypes
+        ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("uninstrumephy.app")
+
     app = QApplication(sys.argv)
     theme.install(app)  # claro/escuro seguindo o sistema
+    app.setWindowIcon(_load_app_icon())  # também vale para os diálogos
     window = MainWindow()
     window.showMaximized()
     sys.exit(app.exec())
