@@ -6,7 +6,7 @@ adaptado ao Qt: superfícies planas, cantos arredondados, espaçamento em múlti
 de 6 px, uma única cor de destaque, estilos claro/escuro que seguem o sistema e
 o mínimo possível de estilo "customizado" espalhado pelos widgets.
 
-Uso (em main_gui.py):
+Uso (em main.py):
 
     from gui import theme
     theme.install(app)

@@ -92,13 +92,13 @@ Principais bibliotecas: `PyQt6`, `sounddevice`, `soundfile`, `numpy`, `pyserial`
 Com o ambiente virtual ativo:
 
 ```bash
-python main_gui.py
+python main.py
 ```
 
 Com `uv`:
 
 ```bash
-uv run main_gui.py
+uv run main.py
 ```
 
 ## Integração com o hardware (Placa A)
@@ -178,7 +178,7 @@ Detalhes importantes:
 ├── gui/               # Interface Qt6
 ├── presets/           # Presets JSON de demonstração
 ├── tests/             # Testes
-├── main_gui.py        # Ponto de entrada
+├── main.py            # Ponto de entrada
 └── requirements.txt   # Dependências
 ```
 
