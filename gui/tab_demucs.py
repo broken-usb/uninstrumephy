@@ -85,7 +85,7 @@ class TabDemucs(QWidget, Ui_TabDemucs):
     """
     Aba de separação de faixas via Demucs.
 
-    Sinais emitidos para o main_gui.py orquestrar o restante da aplicação:
+    Sinais emitidos para o main.py orquestrar o restante da aplicação:
         separation_started()               — separação disparada
         separation_finished(str, str)      — (guitar_path, stems_dir)
         separation_error(str)              — mensagem de erro
@@ -177,7 +177,7 @@ class TabDemucs(QWidget, Ui_TabDemucs):
         title, text = self.HELP_TEXTS[key]
         QMessageBox.information(self, title, text)
 
-    # API pública, chamada pelo main_gui.py
+    # API pública, chamada pelo main.py
 
     def set_audio_path(self, path: str) -> None:
         """Define o arquivo de áudio a ser separado e habilita o botão."""
