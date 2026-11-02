@@ -1,5 +1,5 @@
 # Interface Gráfica
-PyQt6>=6.11.0
+PyQt6>=6.12.0
 
 # Processamento de Áudio e Separação
 demucs>=4.1.0
