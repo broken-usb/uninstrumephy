@@ -270,6 +270,13 @@ class MainWindow(QDialog, Ui_Dialog):
         if hasattr(dlg, "recording_finished"):
             dlg.recording_finished.connect(self.load_direct_audio)
         dlg.exec()
+        # Sem isto, cada abertura deixaria o diálogo (filho desta janela) e
+        # seu ouvinte de troca de tema vivos até o fim do programa. O ouvinte
+        # é descartado por gui/theme.py quando o widget já foi destruído.
+        if hasattr(dlg, "schedule_deletion"):
+            dlg.schedule_deletion()
+        else:
+            dlg.deleteLater()
 
     def load_direct_audio(self, filepath: str, auto_run_tonematching: bool = False) -> None:
         """Carrega a gravação direta da guitarra, ignorando o Demucs."""

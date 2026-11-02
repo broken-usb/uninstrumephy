@@ -38,6 +38,7 @@ class RecordDialog(QDialog):
         self.recorded_filepath: Optional[str] = None
         self.recorder_thread: Optional[AudioRecorderThread] = None
         self.monitor_thread: Optional[LiveMonitorThread] = None
+        self._deletion_pending = False
 
         self._init_ui()
         self._refresh_device_list()
@@ -375,16 +376,60 @@ class RecordDialog(QDialog):
             self.recording_finished.emit(self.recorded_filepath, auto_tone)
             self.accept()
 
+    # ------------------------------------------------------------------ #
+    # Encerramento
+    # ------------------------------------------------------------------ #
+    # O QDialog pode ser fechado por quatro caminhos: botão Cancelar, tecla
+    # Esc, "Usar Gravação" e o "X" da janela. Os três primeiros passam por
+    # done() e NÃO disparam closeEvent(); por isso a limpeza fica em um único
+    # método chamado pelos dois.
+
+    def done(self, result: int) -> None:
+        self._stop_workers()
+        super().done(result)
+
     def closeEvent(self, event) -> None:
+        self._stop_workers()
+        super().closeEvent(event)
+
+    def _running_workers(self) -> list:
+        return [
+            t for t in (self.monitor_thread, self.recorder_thread)
+            if t is not None and t.isRunning()
+        ]
+
+    def _stop_workers(self) -> None:
+        """Para o monitor ao vivo, a gravação e a atualização de dispositivos."""
         if hasattr(self, "_device_refresh_timer"):
             self._device_refresh_timer.stop()
-        if self.monitor_thread is not None and self.monitor_thread.isRunning():
-            self.monitor_thread.request_stop()
-            self.monitor_thread.wait(1500)
-        if self.recorder_thread is not None and self.recorder_thread.isRunning():
-            self.recorder_thread.request_stop()
-            self.recorder_thread.wait(1500)
-        super().closeEvent(event)
+        for thread in self._running_workers():
+            thread.request_stop()
+        for thread in self._running_workers():
+            # Ambos verificam o pedido de parada a cada ~50–250 ms; o limite
+            # evita travar a interface se o driver de áudio não responder.
+            thread.wait(3000)
+
+    def schedule_deletion(self) -> None:
+        """Libera o diálogo da memória assim que nenhuma thread estiver rodando.
+
+        As threads são filhas do diálogo: destruí-lo com uma delas ainda ativa
+        derrubaria o aplicativo ("QThread: Destroyed while thread is still
+        running"). Nesse caso raro, a exclusão espera a thread terminar.
+        """
+        running = self._running_workers()
+        if not running:
+            self.deleteLater()
+            return
+        if self._deletion_pending:
+            return  # já aguardando; cada thread chamará de novo ao terminar
+        self._deletion_pending = True
+        for thread in running:
+            thread.request_stop()
+            thread.finished.connect(self._retry_deletion)
+
+    def _retry_deletion(self) -> None:
+        if not self._running_workers():
+            self.deleteLater()
 
 
 # Alias para compatibilidade com importações em diferentes versões da interface.
