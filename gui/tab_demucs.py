@@ -8,7 +8,7 @@ from pathlib import Path
 from PyQt6.QtWidgets import QWidget, QMessageBox
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from gui.ui_tab_demucs import Ui_TabDemucs
+from gui.ui_loader import load_ui_file
 from core.separator import AudioSeparator
 from gui import icons
 
@@ -81,7 +81,7 @@ class DemucsWorker(QThread):
             self.error.emit(traceback.format_exc())
 
 
-class TabDemucs(QWidget, Ui_TabDemucs):
+class TabDemucs(QWidget):
     """
     Aba de separação de faixas via Demucs.
 
@@ -152,7 +152,7 @@ class TabDemucs(QWidget, Ui_TabDemucs):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setupUi(self)
+        load_ui_file("tab_demucs.ui", self)
         self.btn_run_demucs.setProperty("role", "suggested")
         icons.bind(self.btn_run_demucs.setIcon, "equalizer", "accent")
 

@@ -6,7 +6,7 @@ import traceback
 from PyQt6.QtWidgets import QWidget, QMessageBox, QInputDialog
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from gui.ui_tab_hardware import Ui_TabHardware
+from gui.ui_loader import load_ui_file
 from gui import icons
 from gui.effect_widget import EffectWidget
 from core.effects_spec import EFFECT_SPECS
@@ -61,7 +61,7 @@ class HardwareWorker(QThread):
             self.error.emit(traceback.format_exc())
 
 
-class TabHardware(QWidget, Ui_TabHardware):
+class TabHardware(QWidget):
     send_started = pyqtSignal()
     send_finished = pyqtSignal(bool)
     send_error = pyqtSignal(str)
@@ -69,7 +69,7 @@ class TabHardware(QWidget, Ui_TabHardware):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setupUi(self)
+        load_ui_file("tab_hardware.ui", self)
 
         # Papéis visuais (ver gui/theme.py): uma ação principal por tela.
         self.btn_send_hardware.setProperty("role", "suggested")
