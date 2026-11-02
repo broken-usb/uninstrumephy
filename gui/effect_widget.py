@@ -1,89 +1,61 @@
 from __future__ import annotations
 
-from PyQt6.QtWidgets import (
-    QWidget,
-    QFrame,
-    QVBoxLayout,
-    QHBoxLayout,
-    QLabel,
-    QSlider,
-    QSizePolicy,
-)
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtWidgets import QFrame, QLabel, QSlider, QWidget
+from PyQt6.QtCore import pyqtSignal
 
 from core.effects_spec import EffectSpec, ParamSpec
-from gui.widgets import Switch
+from gui.ui_loader import load_ui_file
 
 
 class EffectWidget(QFrame):
     """
     Widget modular e compacto para representação de cada efeito.
     Otimizado com margens reduzidas para alta densidade em telas 1280x720.
+
+    Layout em gui/effect_widget.ui (cabeçalho com título e interruptor) e
+    gui/effect_param_row.ui (uma linha por parâmetro do EffectSpec). Visual
+    do cartão em gui/theme.py (seletor `EffectWidget`).
     """
 
     changed = pyqtSignal()
 
     def __init__(self, spec: EffectSpec, parent=None) -> None:
         super().__init__(parent)
+        load_ui_file("effect_widget.ui", self)
         self.spec = spec
         self._sliders: dict[str, QSlider] = {}
         self._value_labels: dict[str, QLabel] = {}
 
-        # Visual do cartão definido em gui/theme.py (seletor `EffectWidget`).
-        self.setFrameShape(QFrame.Shape.NoFrame)
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 8, 12, 10)
-        layout.setSpacing(6)
-
-        header = QHBoxLayout()
-        header.setContentsMargins(0, 0, 0, 0)
-        title = QLabel(spec.name)
-        title.setProperty("role", "title")
-        header.addWidget(title)
-        header.addStretch(1)
+        self.lbl_title.setText(spec.name)
 
         # Mantém o nome `checkbox_active` por compatibilidade: o Switch tem a
         # mesma API (isChecked / setChecked / toggled).
-        self.checkbox_active = Switch()
         self.checkbox_active.setToolTip(f"Ativar ou desativar: {spec.name}")
         self.checkbox_active.setAccessibleName(f"{spec.name} ativo")
-        header.addWidget(self.checkbox_active)
-        layout.addLayout(header)
         self.checkbox_active.toggled.connect(self.changed.emit)
 
         for param in spec.params:
-            layout.addLayout(self._build_param_row(param))
+            self.layout_root.addWidget(self._build_param_row(param))
 
     def _format_value(self, param: ParamSpec, value: int) -> str:
         if param.format_display is not None:
             return param.format_display(value)
         return f"{value}{param.unit}"
 
-    def _build_param_row(self, param: ParamSpec) -> QHBoxLayout:
-        row = QHBoxLayout()
-        row.setContentsMargins(0, 0, 0, 0)
-        row.setSpacing(12)
+    def _build_param_row(self, param: ParamSpec) -> QWidget:
+        row = load_ui_file("effect_param_row.ui", QWidget(self))
+        row.setObjectName(f"row_{param.field_name}")
 
-        name_label = QLabel(param.label)
-        name_label.setMinimumWidth(100)
-        name_label.setProperty("role", "param")
-        row.addWidget(name_label)
+        row.lbl_name.setText(param.label)
 
-        slider = QSlider(Qt.Orientation.Horizontal)
+        slider: QSlider = row.slider
         slider.setMinimum(param.min_value)
         slider.setMaximum(param.max_value)
         slider.setValue(param.default)
-        slider.setFixedHeight(22)
         slider.setAccessibleName(param.label)
-        slider.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        row.addWidget(slider)
 
-        value_label = QLabel(self._format_value(param, param.default))
-        value_label.setMinimumWidth(65)
-        value_label.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-        value_label.setProperty("role", "value")
-        row.addWidget(value_label)
+        value_label: QLabel = row.lbl_value
+        value_label.setText(self._format_value(param, param.default))
 
         slider.valueChanged.connect(
             lambda v, p=param, lbl=value_label: lbl.setText(self._format_value(p, v))

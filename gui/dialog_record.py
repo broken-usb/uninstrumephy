@@ -4,13 +4,11 @@ import datetime
 from pathlib import Path
 from typing import Optional
 
-from PyQt6.QtWidgets import (
-    QDialog, QVBoxLayout, QHBoxLayout, QLabel, QComboBox,
-    QPushButton, QProgressBar, QCheckBox, QGroupBox, QMessageBox
-)
+from PyQt6.QtWidgets import QDialog, QPushButton, QMessageBox
 from PyQt6.QtCore import QSize, Qt, QTimer, pyqtSignal
 
 from gui import icons, theme
+from gui.ui_loader import load_ui_file
 from core.audio_recorder import (
     list_input_devices,
     list_output_devices,
@@ -28,10 +26,18 @@ class RecordDialog(QDialog):
     """
     recording_finished = pyqtSignal(str, bool)  # (caminho_arquivo, auto_tone_matching)
 
+    # (rótulo, duração em segundos; 0 = manual). O índice padrão é o de 15 s.
+    DURATIONS: tuple[tuple[str, float], ...] = (
+        ("5 segundos", 5.0),
+        ("10 segundos", 10.0),
+        ("15 segundos (Recomendado)", 15.0),
+        ("30 segundos", 30.0),
+        ("Manual (Iniciar / Parar)", 0.0),
+    )
+    DEFAULT_DURATION_INDEX = 2
+
     def __init__(self, parent=None, default_output_dir: str = "output/recordings") -> None:
         super().__init__(parent)
-        self.setWindowTitle("Gravação Direta — ESP32-S3 / Microfone")
-        self.resize(680, 410)
         self.output_dir = Path(default_output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
@@ -51,97 +57,25 @@ class RecordDialog(QDialog):
         self._device_refresh_timer.start()
 
     def _init_ui(self) -> None:
-        layout = QVBoxLayout(self)
-        layout.setSpacing(12)
+        # Layout, textos, tamanhos e papéis visuais estão em gui/dialog_record.ui.
+        # Aqui fica só o que depende de dados ou do tema: opções de duração,
+        # ícones (recoloridos quando o tema muda) e conexões de sinais.
+        load_ui_file("dialog_record.ui", self)
 
-        # 1. Seleção dos dispositivos. A Placa A fornece apenas a captura
-        # UAC; o monitor é reproduzido em uma saída do computador.
-        grp_dev = QGroupBox("Áudio da pedaleira e saída do computador")
-        dev_layout = QVBoxLayout(grp_dev)
-        input_row = QHBoxLayout()
-        input_row.addWidget(QLabel("Entrada UAC:"))
-        self.combo_devices = QComboBox()
-        self.combo_devices.setIconSize(QSize(16, 16))
-        self.btn_refresh = QPushButton("Atualizar")
+        for label, seconds in self.DURATIONS:
+            self.combo_duration.addItem(label, seconds)
+        self.combo_duration.setCurrentIndex(self.DEFAULT_DURATION_INDEX)
+
         self._set_action(self.btn_refresh, "Atualizar", "refresh")
-        self.btn_refresh.clicked.connect(self._refresh_device_list)
-        input_row.addWidget(self.combo_devices, 1)
-        input_row.addWidget(self.btn_refresh)
-        dev_layout.addLayout(input_row)
-
-        output_row = QHBoxLayout()
-        output_row.addWidget(QLabel("Saída para escutar:"))
-        self.combo_outputs = QComboBox()
-        self.combo_outputs.setIconSize(QSize(16, 16))
-        output_row.addWidget(self.combo_outputs, 1)
-        self.btn_monitor_toggle = QPushButton()
         self._set_action(self.btn_monitor_toggle, "Monitorar ao vivo", "play")
-        self.btn_monitor_toggle.setToolTip(
-            "Reproduz em tempo real o áudio processado recebido pela UAC da Placa A"
-        )
-        self.btn_monitor_toggle.clicked.connect(self._toggle_monitoring)
-        output_row.addWidget(self.btn_monitor_toggle)
-        dev_layout.addLayout(output_row)
-        layout.addWidget(grp_dev)
-
-        # 2. Configuração de Duração
-        grp_dur = QGroupBox("Configuração da Gravação")
-        l_dur = QHBoxLayout(grp_dur)
-        l_dur.addWidget(QLabel("Duração:"))
-        self.combo_duration = QComboBox()
-        self.combo_duration.addItem("5 segundos", 5.0)
-        self.combo_duration.addItem("10 segundos", 10.0)
-        self.combo_duration.addItem("15 segundos (Recomendado)", 15.0)
-        self.combo_duration.addItem("30 segundos", 30.0)
-        self.combo_duration.addItem("Manual (Iniciar / Parar)", 0.0)
-        self.combo_duration.setCurrentIndex(2)  # 15s padrão
-        l_dur.addWidget(self.combo_duration, 1)
-        layout.addWidget(grp_dur)
-
-        # 3. Medidor VU e Temporizador
-        grp_meter = QGroupBox("Nível de Entrada (Sinal) e Tempo")
-        l_meter = QVBoxLayout(grp_meter)
-        l_meter.setSpacing(6)
-
-        self.lbl_timer = QLabel("Tempo: 00:00 / 00:15")
-        self.lbl_timer.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.lbl_timer.setProperty("role", "heading")  # estilo em gui/theme.py
-        l_meter.addWidget(self.lbl_timer)
-
-        self.meter_bar = QProgressBar()
-        self.meter_bar.setRange(0, 100)
-        self.meter_bar.setValue(0)
-        self.meter_bar.setTextVisible(False)
-        self.meter_bar.setFixedHeight(16)
-        self.meter_bar.setProperty("role", "meter")  # estilo em gui/theme.py
-        self.meter_bar.setAccessibleName("Nível de entrada")
-        l_meter.addWidget(self.meter_bar)
-        layout.addWidget(grp_meter)
-
-        self.chk_auto_tone = QCheckBox("Pular Demucs e executar Tone Matching automaticamente")
-        self.chk_auto_tone.setChecked(True)
-        self.chk_auto_tone.setProperty("role", "emphasis")  # estilo em gui/theme.py
-        layout.addWidget(self.chk_auto_tone)
-
-        # 4. Botões de Ação
-        l_actions = QHBoxLayout()
-        self.btn_record_toggle = QPushButton()
         self._set_action(self.btn_record_toggle, "Iniciar Gravação", "record", "record")
-        self.btn_record_toggle.clicked.connect(self._toggle_recording)
-
-        self.btn_accept = QPushButton()
-        self.btn_accept.setProperty("role", "suggested")  # ação que conclui o diálogo
         self._set_action(self.btn_accept, "Usar Gravação", "check", "accent")
-        self.btn_accept.setEnabled(False)
+
+        self.btn_refresh.clicked.connect(self._refresh_device_list)
+        self.btn_monitor_toggle.clicked.connect(self._toggle_monitoring)
+        self.btn_record_toggle.clicked.connect(self._toggle_recording)
         self.btn_accept.clicked.connect(self._accept_recording)
-
-        self.btn_cancel = QPushButton("Cancelar")
         self.btn_cancel.clicked.connect(self.reject)
-
-        l_actions.addWidget(self.btn_record_toggle)
-        l_actions.addWidget(self.btn_accept)
-        l_actions.addWidget(self.btn_cancel)
-        layout.addLayout(l_actions)
 
     _ICON_ROLE = Qt.ItemDataRole.UserRole + 1
 

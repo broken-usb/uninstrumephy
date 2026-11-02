@@ -7,7 +7,7 @@ import traceback
 from PyQt6.QtWidgets import QWidget
 from PyQt6.QtCore import QThread, pyqtSignal
 
-from gui.ui_tab_tonematching import Ui_TabToneMatching
+from gui.ui_loader import load_ui_file
 from gui.plots import WaveformPlot, EQCurvePlot, SpectralCentroidPlot
 from core.analyzer import AudioAnalyzer
 from gui import icons
@@ -46,7 +46,7 @@ class AnalysisWorker(QThread):
             self.error.emit(traceback.format_exc())
 
 
-class TabToneMatching(QWidget, Ui_TabToneMatching):
+class TabToneMatching(QWidget):
     analysis_started = pyqtSignal()
     analysis_finished = pyqtSignal(dict, str)
     analysis_error = pyqtSignal(str)
@@ -54,7 +54,7 @@ class TabToneMatching(QWidget, Ui_TabToneMatching):
 
     def __init__(self, parent=None) -> None:
         super().__init__(parent)
-        self.setupUi(self)
+        load_ui_file("tab_tonematching.ui", self)
         self.btn_run_analysis.setProperty("role", "suggested")
         icons.bind(self.btn_run_analysis.setIcon, "waveform", "accent")
 

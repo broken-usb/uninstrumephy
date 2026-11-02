@@ -17,7 +17,7 @@ from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from tinytag import TinyTag
 
 from core.logger import setup_logging
-from gui.ui_mainwindow import Ui_Dialog
+from gui.ui_loader import load_ui_file
 from gui.tab_demucs import TabDemucs
 from gui.tab_tonematching import TabToneMatching
 from gui.tab_hardware import TabHardware
@@ -106,10 +106,10 @@ def _load_app_icon() -> QIcon:
     return icon
 
 
-class MainWindow(QDialog, Ui_Dialog):
+class MainWindow(QDialog):
     def __init__(self) -> None:
         super().__init__()
-        self.setupUi(self)
+        load_ui_file("mainwindow.ui", self)
         logger.info("Inicializando aplicação…")
 
         self.path_original: str = ""
