@@ -11,9 +11,9 @@ from PyQt6.QtWidgets import (
     QSystemTrayIcon,
 )
 from PyQt6.QtCore import (
-    QLibraryInfo, QLocale, QSize, QThread, QTranslator, pyqtSignal, QUrl, Qt, QTimer,
+    QLibraryInfo, QLocale, QRectF, QSize, QThread, QTranslator, pyqtSignal, QUrl, Qt, QTimer,
 )
-from PyQt6.QtGui import QIcon, QPixmap, QImage, QImageReader
+from PyQt6.QtGui import QIcon, QPixmap, QImage, QImageReader, QPainter, QPainterPath
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 from tinytag import TinyTag
@@ -259,8 +259,8 @@ class MainWindow(QDialog):
         self.lbl_section_orig.setMinimumHeight(self.combo_stems.sizeHint().height())
         self.combo_stems.setMinimumWidth(130)
 
-        # A capa já é reduzida mantendo a proporção; sem isto o Qt a esticaria.
-        self.lbl_cover.setScaledContents(False)
+        # O quadrado da capa tem tamanho fixo (mainwindow.ui); a imagem é
+        # reduzida para caber nele em _show_cover.
         self.lbl_cover.setWordWrap(True)
 
     def _set_transport_icon(self, button, name: str) -> None:
@@ -273,8 +273,6 @@ class MainWindow(QDialog):
             name = btn.property("icon_name")
             if name:
                 btn.setIcon(icons.icon(name))
-
-    COVER_SIZE = 180  # lado máximo da capa, em pixels lógicos
 
     def _show_cover(self, image_data: bytes | None) -> None:
         """Exibe a capa do álbum, ou o ícone padrão se não houver/for inválida."""
@@ -293,24 +291,47 @@ class MainWindow(QDialog):
             self._show_cover_placeholder("music-note")
             return
 
-        # Em telas HiDPI (escala 125%, 200%…) a imagem é reduzida para a
-        # resolução física, senão a capa fica borrada.
-        dpr = self.lbl_cover.devicePixelRatioF()
-        side = round(self.COVER_SIZE * dpr)
-        pixmap = QPixmap.fromImage(image).scaled(
-            side, side,
-            Qt.AspectRatioMode.KeepAspectRatio,
-            Qt.TransformationMode.SmoothTransformation,
-        )
-        pixmap.setDevicePixelRatio(dpr)
+        pixmap = self._fit_cover(image)
 
         # Sem setText("") depois: no QLabel, definir texto apaga a imagem.
         icons.clear_label_icon(self.lbl_cover)
         self.lbl_cover.setPixmap(pixmap)
         logger.info(
             "Capa: exibida (%dx%d original, %dx%d na tela, escala %.2f).",
-            image.width(), image.height(), pixmap.width(), pixmap.height(), dpr,
+            image.width(), image.height(), pixmap.width(), pixmap.height(),
+            pixmap.devicePixelRatio(),
         )
+
+    def _fit_cover(self, image: QImage) -> QPixmap:
+        """Reduz a capa para caber DENTRO do quadrado fixo, sem alterá-lo.
+
+        Mantém a proporção (uma capa 16:9 fica com faixas vazias em cima e
+        embaixo) e arredonda os cantos para acompanhar a borda do quadrado.
+        """
+        # Área útil do quadrado, já descontada a borda do tema (gui/theme.py).
+        self.lbl_cover.ensurePolished()  # garante que a borda do estilo já conta
+        area = self.lbl_cover.contentsRect().size()
+        # Em telas HiDPI (escala 125%, 200%…) a imagem é reduzida para a
+        # resolução física, senão a capa fica borrada.
+        dpr = self.lbl_cover.devicePixelRatioF()
+        scaled = image.scaled(
+            round(area.width() * dpr), round(area.height() * dpr),
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+
+        rounded = QPixmap(scaled.size())
+        rounded.fill(Qt.GlobalColor.transparent)
+        path = QPainterPath()
+        radius = (theme.RADIUS_CARD - 1) * dpr  # 1 px de borda
+        path.addRoundedRect(QRectF(rounded.rect()), radius, radius)
+        painter = QPainter(rounded)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        painter.setClipPath(path)
+        painter.drawImage(0, 0, scaled)
+        painter.end()
+        rounded.setDevicePixelRatio(dpr)
+        return rounded
 
     def _show_cover_placeholder(self, name: str) -> None:
         """Ícone no lugar da capa quando não há imagem."""
