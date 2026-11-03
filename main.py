@@ -10,7 +10,9 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QSystemTrayIcon,
 )
-from PyQt6.QtCore import QSize, QThread, pyqtSignal, QUrl, Qt, QTimer
+from PyQt6.QtCore import (
+    QLibraryInfo, QLocale, QSize, QThread, QTranslator, pyqtSignal, QUrl, Qt, QTimer,
+)
 from PyQt6.QtGui import QIcon, QPixmap, QImage
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
@@ -22,6 +24,7 @@ from gui.tab_demucs import TabDemucs
 from gui.tab_tonematching import TabToneMatching
 from gui.tab_hardware import TabHardware
 from gui import icons, theme
+from gui.errors import show_error
 
 # Inicialização do Logging (console + output/logs/latest-log.txt)
 setup_logging()
@@ -34,15 +37,29 @@ def global_exception_hook(exctype, value, tb):
     logger.critical(f"Exceção não tratada capturada:\n{err_str}")
 
     if QApplication.instance():
-        msg = QMessageBox()
-        msg.setIcon(QMessageBox.Icon.Critical)
-        msg.setWindowTitle("Erro Crítico")
-        msg.setText("Ocorreu um erro interno na aplicação.")
-        msg.setDetailedText(err_str)
-        msg.exec()
+        show_error(
+            QApplication.activeWindow(),
+            "Erro Crítico",
+            err_str,
+            headline="Ocorreu um erro interno na aplicação.",
+        )
 
 
 sys.excepthook = global_exception_hook
+
+
+def _install_qt_translations(app: QApplication) -> None:
+    """Traduz os textos internos do Qt (OK/Cancelar, "Mostrar detalhes"…).
+
+    O PyQt6 já inclui as traduções; sem carregá-las, os botões padrão das
+    caixas de diálogo aparecem em inglês no meio da interface em português.
+    """
+    translator = QTranslator(app)
+    path = QLibraryInfo.path(QLibraryInfo.LibraryPath.TranslationsPath)
+    if translator.load(QLocale(QLocale.Language.Portuguese, QLocale.Country.Brazil), "qtbase", "_", path):
+        app.installTranslator(translator)
+    else:
+        logger.debug("Traduções do Qt não encontradas em %s; botões padrão ficarão em inglês.", path)
 
 
 class MetadataWorker(QThread):
@@ -53,26 +70,25 @@ class MetadataWorker(QThread):
         super().__init__()
         self.file_path = file_path
 
+    @staticmethod
+    def _extract_cover(tag: TinyTag) -> bytes | None:
+        """Bytes da capa embutida no arquivo (JPEG/PNG), ou None se não houver.
+
+        Na tinytag 2.x, `tag.images.any` é uma PROPRIEDADE que devolve um
+        objeto `Image` (os bytes ficam em `.data`), dando preferência à capa
+        frontal. A versão antiga deste código chamava `images.any()` e
+        engolia o erro, por isso nenhuma capa era exibida.
+        """
+        image = tag.images.any
+        if image is None or not image.data:
+            return None
+        return bytes(image.data)
+
     def run(self) -> None:
         try:
             logger.debug(f"Lendo metadados de: {self.file_path}")
             tag = TinyTag.get(self.file_path, image=True)
-
-            image_data = None
-            images = getattr(tag, "images", None)
-            if images:
-                if isinstance(images, list) and images:
-                    image_data = images[0]
-                else:
-                    try:
-                        image_data = images.any()
-                    except Exception:
-                        image_data = None
-            elif hasattr(tag, "get_image"):
-                try:
-                    image_data = tag.get_image()
-                except Exception:
-                    image_data = None
+            image_data = self._extract_cover(tag)
 
             params = {
                 "file_path": self.file_path,
@@ -549,7 +565,7 @@ class MainWindow(QDialog):
         self.btn_load.setEnabled(False)
         self.btn_record.setEnabled(False)
         self.progress_bar.setRange(0, 0)
-        self._notify("Envio iniciado", "Transmitindo estado completo (140B) para a ESP32-S3…")
+        self._notify("Envio iniciado", "Enviando os parâmetros dos efeitos para a ESP32-S3…")
 
     def _on_hardware_send_finished(self, was_mock: bool) -> None:
         self.progress_bar.setRange(0, 100)
@@ -568,10 +584,20 @@ class MainWindow(QDialog):
         self.btn_load.setEnabled(True)
         self.btn_record.setEnabled(True)
         self._set_status("Erro ao enviar para a pedaleira.")
-        self._notify(
-            "Falha no envio",
-            self._friendly_error_summary(err_msg),
-            icon=QSystemTrayIcon.MessageIcon.Critical,
+        # Antes só havia a notificação da bandeja, que não aparece em ambientes
+        # sem bandeja (ex.: GNOME padrão): o usuário não via o motivo da falha.
+        # A notificação continua útil quando a janela não está em foco.
+        if not self.isActiveWindow():
+            self._notify(
+                "Falha no envio",
+                "Não foi possível enviar os parâmetros para a pedaleira.",
+                icon=QSystemTrayIcon.MessageIcon.Critical,
+            )
+        show_error(
+            self,
+            "Falha no envio para a pedaleira",
+            err_msg,
+            hint="Verifique o cabo USB e se a Placa A está ligada, depois tente de novo.",
         )
 
     def _on_worker_error(self, err_msg: str) -> None:
@@ -580,12 +606,7 @@ class MainWindow(QDialog):
         self.btn_load.setEnabled(True)
         self.btn_record.setEnabled(True)
         self._set_status("Erro no processamento.")
-        QMessageBox.critical(self, "Erro", self._friendly_error_summary(err_msg))
-
-    @staticmethod
-    def _friendly_error_summary(err_msg: str) -> str:
-        lines = [line.strip() for line in err_msg.strip().splitlines() if line.strip()]
-        return lines[-1] if lines else "Ocorreu um erro inesperado."
+        show_error(self, "Erro no processamento", err_msg)
 
     def toggle_original(self) -> None:
         if not self.path_original:
@@ -716,6 +737,7 @@ if __name__ == "__main__":
         ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("uninstrumephy.app")
 
     app = QApplication(sys.argv)
+    _install_qt_translations(app)
     theme.install(app)  # claro/escuro seguindo o sistema
     app.setWindowIcon(_load_app_icon())  # também vale para os diálogos
     window = MainWindow()

@@ -12,6 +12,7 @@ from gui.ui_loader import load_ui_file
 from core.audio_recorder import (
     list_input_devices,
     list_output_devices,
+    refresh_devices,
     get_default_input_device_index,
     get_default_output_device_index,
     AudioRecorderThread,
@@ -47,6 +48,9 @@ class RecordDialog(QDialog):
         self._deletion_pending = False
 
         self._init_ui()
+        # A placa pode ter sido conectada depois que o programa abriu: relê a
+        # lista do sistema se o kernel registrou mudança de placas de som.
+        refresh_devices(force=False)
         self._refresh_device_list()
         theme.on_change(self._refresh_icons)
         # A UAC pode ser enumerada depois de o diálogo abrir. Atualizamos a
@@ -71,7 +75,7 @@ class RecordDialog(QDialog):
         self._set_action(self.btn_record_toggle, "Iniciar Gravação", "record", "record")
         self._set_action(self.btn_accept, "Usar Gravação", "check", "accent")
 
-        self.btn_refresh.clicked.connect(self._refresh_device_list)
+        self.btn_refresh.clicked.connect(self._on_refresh_clicked)
         self.btn_monitor_toggle.clicked.connect(self._toggle_monitoring)
         self.btn_record_toggle.clicked.connect(self._toggle_recording)
         self.btn_accept.clicked.connect(self._accept_recording)
@@ -145,11 +149,19 @@ class RecordDialog(QDialog):
             self.combo_outputs.addItem("Nenhuma saída de áudio encontrada", None)
             self.btn_monitor_toggle.setEnabled(False)
 
+    def _on_refresh_clicked(self) -> None:
+        """Botão Atualizar: sempre relê a lista do sistema, não a cópia guardada."""
+        refresh_devices(force=True)
+        self._refresh_device_list()
+
     def _refresh_device_list_if_changed(self) -> None:
         if (self.recorder_thread is not None and self.recorder_thread.isRunning()) or (
             self.monitor_thread is not None and self.monitor_thread.isRunning()
         ):
             return
+        # Leitura barata de /proc/asound/cards; o PortAudio só é reiniciado
+        # (operação cara) quando uma placa foi conectada ou removida.
+        refresh_devices(force=False)
         devices = list_input_devices()
         outputs = list_output_devices()
         input_signature = tuple(

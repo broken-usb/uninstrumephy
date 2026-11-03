@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import logging
 import queue
+import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
 
@@ -13,6 +15,80 @@ from PyQt6.QtCore import QThread, pyqtSignal
 logger = logging.getLogger(__name__)
 
 
+# --------------------------------------------------------------------------- #
+# Atualização da lista de dispositivos (hotplug)
+# --------------------------------------------------------------------------- #
+# O PortAudio lê a lista de dispositivos uma única vez, ao ser inicializado.
+# Depois disso, sd.query_devices() devolve sempre a mesma lista: uma placa
+# USB conectada (ou reconectada) com o programa aberto não aparece. A única
+# forma de reler a lista é reiniciar o PortAudio, o que fecha qualquer fluxo
+# aberto. Por isso o reinício:
+#   * só acontece sem fluxos ativos (contados por _stream_guard);
+#   * no modo automático, só quando a lista de placas do kernel muda
+#     (/proc/asound/cards, leitura barata), já que reiniciar o PortAudio faz
+#     ele consultar cada dispositivo e pode levar centenas de ms.
+_PA_LOCK = threading.RLock()
+_active_streams = 0
+_ASOUND_CARDS = Path("/proc/asound/cards")
+_last_cards_signature: str | None = None
+
+
+def _sound_cards_signature() -> str | None:
+    """Lista de placas de som do kernel (Linux/ALSA); None se indisponível."""
+    try:
+        return _ASOUND_CARDS.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+def refresh_devices(force: bool = True) -> bool:
+    """Faz o PortAudio reler a lista de dispositivos do sistema.
+
+    force=True  — reinicia sempre (ex.: botão "Atualizar").
+    force=False — reinicia só se a lista de placas do kernel mudou desde o
+                  último reinício; caso contrário não faz nada (barato o
+                  bastante para ser chamado periodicamente).
+
+    Retorna True se a lista foi relida. Nunca reinicia com um fluxo aberto.
+    """
+    global _last_cards_signature
+    signature = _sound_cards_signature()
+    with _PA_LOCK:
+        if not force and (signature is None or signature == _last_cards_signature):
+            return False
+        if _active_streams:
+            logger.debug("Atualização de dispositivos adiada: há fluxo de áudio aberto.")
+            return False
+        try:
+            import sounddevice as sd
+            sd._terminate()
+            sd._initialize()
+        except Exception as exc:
+            logger.warning("Não foi possível reler a lista de dispositivos de áudio: %s", exc)
+            return False
+        _last_cards_signature = signature
+        logger.info("Lista de dispositivos de áudio relida.")
+        return True
+
+
+@contextmanager
+def _stream_guard():
+    """Marca um fluxo PortAudio como aberto, bloqueando reinícios enquanto durar."""
+    global _active_streams
+    with _PA_LOCK:
+        _active_streams += 1
+    try:
+        yield
+    finally:
+        with _PA_LOCK:
+            _active_streams -= 1
+
+
+def _query_devices(sd, index: int | None = None):
+    with _PA_LOCK:
+        return sd.query_devices() if index is None else sd.query_devices(index)
+
+
 def list_input_devices() -> list[dict]:
     """
     Lista todos os dispositivos de entrada de áudio do sistema operacional,
@@ -20,7 +96,7 @@ def list_input_devices() -> list[dict]:
     """
     try:
         import sounddevice as sd
-        devices = sd.query_devices()
+        devices = _query_devices(sd)
         input_devs = []
         for idx, d in enumerate(devices):
             if d.get("max_input_channels", 0) > 0:
@@ -49,7 +125,7 @@ def list_output_devices() -> list[dict]:
     """
     try:
         import sounddevice as sd
-        devices = sd.query_devices()
+        devices = _query_devices(sd)
         output_devs = []
         for idx, d in enumerate(devices):
             if d.get("max_output_channels", 0) > 0:
@@ -145,7 +221,7 @@ class LiveMonitorThread(QThread):
         # O sufixo ``(hw:N,0)`` pode mudar após reconexão; use o nome do
         # produto antes dos detalhes ALSA.
         needle = name_hint.split(":", 1)[0].strip().lower()
-        for index, info in enumerate(sd.query_devices()):
+        for index, info in enumerate(_query_devices(sd)):
             channels = info.get("max_input_channels", 0) if input_device else info.get("max_output_channels", 0)
             if channels and needle in info.get("name", "").lower():
                 return index
@@ -207,10 +283,6 @@ class LiveMonitorThread(QThread):
                 self.level_meter.emit(float(np.clip((db + 50.0) / 50.0 * 100.0, 0.0, 100.0)))
 
         try:
-            output_channels = 1
-            if self.output_device_index is not None:
-                output_info = sd.query_devices(self.output_device_index)
-                output_channels = max(1, min(2, int(output_info.get("max_output_channels", 1))))
             if self.input_device_index is not None:
                 input_error = None
                 # Após uma alteração CDC a placa pode reenumerar a UAC e o
@@ -222,6 +294,10 @@ class LiveMonitorThread(QThread):
                         self.status_msg.emit(
                             "Aguardando a UAC da Placa A terminar a enumeração…"
                         )
+                    # Sem isto a busca abaixo veria sempre a lista antiga do
+                    # PortAudio e a placa reconectada nunca seria encontrada.
+                    # Só reinicia se o kernel registrou mudança de placas.
+                    refresh_devices(force=False)
                     if self.input_name_hint:
                         refreshed = self._find_device_index(sd, self.input_name_hint, True)
                         if refreshed is None:
@@ -255,7 +331,16 @@ class LiveMonitorThread(QThread):
                         f"{busy_hint} Detalhe: "
                         f"{input_error}"
                     ) from input_error
+            # Se a lista foi relida acima, os índices podem ter mudado: a saída
+            # também é reencontrada pelo nome antes de abrir o fluxo.
+            if self.output_name_hint:
+                refreshed_out = self._find_device_index(sd, self.output_name_hint, False)
+                if refreshed_out is not None:
+                    self.output_device_index = refreshed_out
+            output_channels = 1
             if self.output_device_index is not None:
+                output_info = _query_devices(sd, self.output_device_index)
+                output_channels = max(1, min(2, int(output_info.get("max_output_channels", 1))))
                 try:
                     sd.check_output_settings(
                         device=self.output_device_index,
@@ -264,7 +349,7 @@ class LiveMonitorThread(QThread):
                         dtype="float32",
                     )
                 except Exception as exc:
-                    output_name = sd.query_devices(self.output_device_index).get("name", "saída")
+                    output_name = output_info.get("name", "saída")
                     raise RuntimeError(
                         f"A saída '{output_name}' não aceita {self.sample_rate} Hz. "
                         "Selecione outra saída ou ajuste a taxa no sistema. "
@@ -272,7 +357,7 @@ class LiveMonitorThread(QThread):
                     ) from exc
 
             self.status_msg.emit("Monitoramento ao vivo ativo — áudio processado da Placa A")
-            with sd.Stream(
+            with _stream_guard(), sd.Stream(
                 device=(self.input_device_index, self.output_device_index),
                 samplerate=self.sample_rate,
                 channels=(1, output_channels),
@@ -281,10 +366,13 @@ class LiveMonitorThread(QThread):
                 latency=("low", "low"),
                 callback=callback,
             ) as stream:
+                # Em um fluxo duplex, `latency` é o par (entrada, saída) em
+                # segundos; o sounddevice não tem `input_latency`/`output_latency`.
+                input_latency, output_latency = stream.latency
                 self.status_msg.emit(
                     "Monitoramento ativo — latência PortAudio: "
-                    f"entrada {stream.input_latency * 1000.0:.1f} ms / "
-                    f"saída {stream.output_latency * 1000.0:.1f} ms"
+                    f"entrada {input_latency * 1000.0:.1f} ms / "
+                    f"saída {output_latency * 1000.0:.1f} ms"
                 )
                 while not self._stop_requested:
                     self.msleep(50)
@@ -356,7 +444,7 @@ class AudioRecorderThread(QThread):
         collected_chunks = []
 
         try:
-            with sd.InputStream(
+            with _stream_guard(), sd.InputStream(
                 device=self.device_index,
                 samplerate=self.sample_rate,
                 channels=self.channels,
