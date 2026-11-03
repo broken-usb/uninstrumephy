@@ -13,7 +13,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import (
     QLibraryInfo, QLocale, QSize, QThread, QTranslator, pyqtSignal, QUrl, Qt, QTimer,
 )
-from PyQt6.QtGui import QIcon, QPixmap, QImage
+from PyQt6.QtGui import QIcon, QPixmap, QImage, QImageReader
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 
 from tinytag import TinyTag
@@ -81,14 +81,63 @@ class MetadataWorker(QThread):
         """
         image = tag.images.any
         if image is None or not image.data:
+            logger.info("Capa: nenhuma imagem embutida no arquivo.")
             return None
-        return bytes(image.data)
+        logger.info(
+            "Capa: imagem embutida encontrada (%r, %d bytes, tipo '%s').",
+            image.mime_type or "formato não informado", len(image.data), image.name,
+        )
+        return MetadataWorker._strip_to_image(bytes(image.data))
+
+    # Assinaturas que um arquivo de imagem tem nos primeiros bytes.
+    _IMAGE_SIGNATURES = (
+        b"\xff\xd8\xff",          # JPEG
+        b"\x89PNG\r\n\x1a\n",     # PNG
+        b"GIF87a", b"GIF89a",     # GIF
+    )
+    _IMAGE_SEARCH_WINDOW = 1024   # quadro APIC: tipo + descrição ficam bem antes disso
+
+    @staticmethod
+    def _strip_to_image(data: bytes) -> bytes:
+        """Corrige capas lidas com bytes extras no início.
+
+        A tinytag ignora o flag "data length indicator" dos quadros ID3 v2.4
+        (usado por alguns programas que embutem capas, como em arquivos
+        baixados com yt-dlp). Ela então lê os 4 bytes de tamanho como se
+        fossem o tipo da imagem, e tudo fica deslocado: o resultado começa
+        pela descrição ("\\x03Album cover\\x00") e só depois vem a imagem.
+        Aqui localizamos a assinatura da imagem e descartamos o que vem antes.
+        """
+        def is_image_at(pos: int) -> bool:
+            if any(data.startswith(sig, pos) for sig in MetadataWorker._IMAGE_SIGNATURES):
+                return True
+            return data.startswith(b"RIFF", pos) and data.startswith(b"WEBP", pos + 8)
+
+        if is_image_at(0):
+            return data
+        window = data[:MetadataWorker._IMAGE_SEARCH_WINDOW]
+        candidates = [pos for pos in range(1, len(window)) if is_image_at(pos)]
+        if not candidates:
+            return data  # formato desconhecido: deixa o Qt tentar e registrar a falha
+        offset = candidates[0]
+        logger.warning(
+            "Capa: os dados lidos começavam %d bytes antes da imagem real "
+            "(quadro ID3 interpretado incorretamente pela tinytag); corrigido.",
+            offset,
+        )
+        return data[offset:]
 
     def run(self) -> None:
         try:
             logger.debug(f"Lendo metadados de: {self.file_path}")
             tag = TinyTag.get(self.file_path, image=True)
-            image_data = self._extract_cover(tag)
+            # Uma capa defeituosa não deve impedir a exibição do título,
+            # artista e duração: o erro fica só no log.
+            try:
+                image_data = self._extract_cover(tag)
+            except Exception:
+                logger.exception("Capa: falha ao extrair a imagem embutida.")
+                image_data = None
 
             params = {
                 "file_path": self.file_path,
@@ -224,6 +273,44 @@ class MainWindow(QDialog):
             name = btn.property("icon_name")
             if name:
                 btn.setIcon(icons.icon(name))
+
+    COVER_SIZE = 180  # lado máximo da capa, em pixels lógicos
+
+    def _show_cover(self, image_data: bytes | None) -> None:
+        """Exibe a capa do álbum, ou o ícone padrão se não houver/for inválida."""
+        if not image_data:
+            self._show_cover_placeholder("music-note")
+            return
+
+        image = QImage.fromData(image_data)
+        if image.isNull():
+            logger.warning(
+                "Capa: o Qt não conseguiu decodificar a imagem (%d bytes, início %s). "
+                "Formatos de imagem disponíveis: %s",
+                len(image_data), bytes(image_data[:12]).hex(" "),
+                ", ".join(bytes(f).decode() for f in QImageReader.supportedImageFormats()),
+            )
+            self._show_cover_placeholder("music-note")
+            return
+
+        # Em telas HiDPI (escala 125%, 200%…) a imagem é reduzida para a
+        # resolução física, senão a capa fica borrada.
+        dpr = self.lbl_cover.devicePixelRatioF()
+        side = round(self.COVER_SIZE * dpr)
+        pixmap = QPixmap.fromImage(image).scaled(
+            side, side,
+            Qt.AspectRatioMode.KeepAspectRatio,
+            Qt.TransformationMode.SmoothTransformation,
+        )
+        pixmap.setDevicePixelRatio(dpr)
+
+        # Sem setText("") depois: no QLabel, definir texto apaga a imagem.
+        icons.clear_label_icon(self.lbl_cover)
+        self.lbl_cover.setPixmap(pixmap)
+        logger.info(
+            "Capa: exibida (%dx%d original, %dx%d na tela, escala %.2f).",
+            image.width(), image.height(), pixmap.width(), pixmap.height(), dpr,
+        )
 
     def _show_cover_placeholder(self, name: str) -> None:
         """Ícone no lugar da capa quando não há imagem."""
@@ -432,28 +519,7 @@ class MainWindow(QDialog):
         self.lbl_info.setText(f"{title}  |  {duration_str}")
         self.lbl_metadata.setText(f"Música:  {title}\nArtista: {artista}\nÁlbum:   {album}  ({ano})")
 
-        image_data = params.get("image_data")
-        if image_data:
-            try:
-                img = QImage()
-                if img.loadFromData(image_data):
-                    pixmap = QPixmap.fromImage(img)
-                    icons.clear_label_icon(self.lbl_cover)
-                    self.lbl_cover.setPixmap(
-                        pixmap.scaled(
-                            180,
-                            180,
-                            Qt.AspectRatioMode.KeepAspectRatio,
-                            Qt.TransformationMode.SmoothTransformation,
-                        )
-                    )
-                    self.lbl_cover.setText("")
-                else:
-                    self._show_cover_placeholder("music-note")
-            except Exception:
-                self._show_cover_placeholder("music-note")
-        else:
-            self._show_cover_placeholder("music-note")
+        self._show_cover(params.get("image_data"))
 
         self.btn_play_orig.setEnabled(True)
         self.btn_stop_orig.setEnabled(False)
