@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import queue
 import threading
 import time
@@ -13,6 +14,55 @@ import soundfile as sf
 from PyQt6.QtCore import QThread, pyqtSignal
 
 logger = logging.getLogger(__name__)
+
+
+# --------------------------------------------------------------------------- #
+# PortAudio embutida (AppImage)
+# --------------------------------------------------------------------------- #
+# O pacote `sounddevice` não traz a biblioteca PortAudio no Linux: ele a
+# procura com ctypes.util.find_library("portaudio"), que só olha o cache do
+# sistema (ldconfig). No AppImage, o AppRun informa em UNINSTRUMEPHY_PORTAUDIO
+# o caminho de uma cópia embutida, usada apenas se o sistema não tiver a sua.
+_portaudio_fallback_installed = False
+
+
+def _install_portaudio_fallback() -> None:
+    global _portaudio_fallback_installed
+    if _portaudio_fallback_installed:
+        return
+    _portaudio_fallback_installed = True
+    bundled = os.environ.get("UNINSTRUMEPHY_PORTAUDIO")
+    if not bundled or not Path(bundled).is_file():
+        return
+    import ctypes.util
+
+    original = ctypes.util.find_library
+
+    def find_library(name: str):
+        found = original(name)
+        if found is None and name == "portaudio":
+            logger.info("PortAudio do sistema não encontrada; usando a embutida: %s", bundled)
+            return bundled
+        return found
+
+    ctypes.util.find_library = find_library
+
+
+def _import_sounddevice():
+    """Importa o sounddevice garantindo que a PortAudio seja encontrada."""
+    _install_portaudio_fallback()
+    import sounddevice
+    return sounddevice
+
+
+def _sounddevice_error_message(exc: BaseException) -> str:
+    if isinstance(exc, ImportError):
+        return ("A biblioteca 'sounddevice' não foi encontrada. "
+                "Instale as dependências com: pip install -r requirements.txt")
+    return ("A biblioteca de áudio PortAudio não foi encontrada no sistema. "
+            "Instale-a (Fedora: sudo dnf install portaudio; "
+            "Ubuntu/Debian: sudo apt install libportaudio2) e abra o programa de novo. "
+            f"Detalhe: {exc}")
 
 
 # --------------------------------------------------------------------------- #
@@ -60,7 +110,7 @@ def refresh_devices(force: bool = True) -> bool:
             logger.debug("Atualização de dispositivos adiada: há fluxo de áudio aberto.")
             return False
         try:
-            import sounddevice as sd
+            sd = _import_sounddevice()
             sd._terminate()
             sd._initialize()
         except Exception as exc:
@@ -95,7 +145,7 @@ def list_input_devices() -> list[dict]:
     identificando automaticamente se algum deles pertence à pedaleira ESP32-S3.
     """
     try:
-        import sounddevice as sd
+        sd = _import_sounddevice()
         devices = _query_devices(sd)
         input_devs = []
         for idx, d in enumerate(devices):
@@ -124,7 +174,7 @@ def list_output_devices() -> list[dict]:
     quer escutar (fones, caixas de som ou outra interface USB).
     """
     try:
-        import sounddevice as sd
+        sd = _import_sounddevice()
         devices = _query_devices(sd)
         output_devs = []
         for idx, d in enumerate(devices):
@@ -148,7 +198,7 @@ def get_default_input_device_index() -> Optional[int]:
     retorna o dispositivo de entrada padrão do sistema.
     """
     try:
-        import sounddevice as sd
+        sd = _import_sounddevice()
         devices = list_input_devices()
         for d in devices:
             if d["is_esp32"]:
@@ -166,7 +216,7 @@ def get_default_input_device_index() -> Optional[int]:
 def get_default_output_device_index() -> Optional[int]:
     """Retorna a saída padrão do PortAudio, se houver uma disponível."""
     try:
-        import sounddevice as sd
+        sd = _import_sounddevice()
         default_out = sd.default.device[1]
         if default_out is not None and default_out >= 0:
             return int(default_out)
@@ -229,12 +279,9 @@ class LiveMonitorThread(QThread):
 
     def run(self) -> None:
         try:
-            import sounddevice as sd
-        except ImportError:
-            self.error.emit(
-                "A biblioteca 'sounddevice' não foi encontrada. "
-                "Instale-a no ambiente do aplicativo."
-            )
+            sd = _import_sounddevice()
+        except (ImportError, OSError) as exc:
+            self.error.emit(_sounddevice_error_message(exc))
             return
 
         meter_counter = 0
@@ -381,7 +428,7 @@ class LiveMonitorThread(QThread):
             logger.exception("Erro durante o monitoramento ao vivo")
             self.error.emit(
                 "Não foi possível reproduzir a Placa A em tempo real. "
-                "Confirme que a entrada UAC e a saída aceitam 44,1 kHz e que não estão em uso: "
+                f"Confirme que a entrada UAC e a saída aceitam {self.sample_rate} Hz e que não estão em uso: "
                 f"{exc}"
             )
 
@@ -419,9 +466,9 @@ class AudioRecorderThread(QThread):
 
     def run(self) -> None:
         try:
-            import sounddevice as sd
-        except ImportError:
-            self.error.emit("A biblioteca 'sounddevice' não foi encontrada. Execute: pip install sounddevice")
+            sd = _import_sounddevice()
+        except (ImportError, OSError) as exc:
+            self.error.emit(_sounddevice_error_message(exc))
             return
 
         audio_queue = queue.Queue(maxsize=256)

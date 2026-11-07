@@ -1,0 +1,18 @@
+#!/bin/sh
+# Ponto de entrada do AppImage do Uninstrumephy.
+# A versão do Python na última linha é preenchida por packaging/build_appimage.sh.
+
+HERE="$(dirname "$(readlink -f "$0")")"
+APP="$HERE/opt/uninstrumephy"
+
+# Isola o Python embutido de pacotes e variáveis do Python do usuário.
+unset PYTHONHOME PYTHONPATH
+export PYTHONNOUSERSITE=1
+
+# PortAudio embutida: usada só se o sistema não tiver a sua
+# (ver core/audio_recorder.py, _install_portaudio_fallback).
+export UNINSTRUMEPHY_PORTAUDIO="$APP/lib/libportaudio.so.2"
+
+# O wrapper do python-appimage prepara o ambiente do Python embutido
+# (certificados HTTPS para baixar os modelos do Demucs, entre outros).
+exec "$HERE/usr/bin/python@PYTHON_VERSION@" -s "$APP/main.py" "$@"

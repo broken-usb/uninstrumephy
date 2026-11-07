@@ -173,17 +173,25 @@ class TabHardware(QWidget):
         if confirm != QMessageBox.StandardButton.Yes:
             return
 
-        delete_preset(name)
+        try:
+            delete_preset(name)
+        except PresetError as exc:
+            QMessageBox.critical(self, "Erro ao excluir preset", str(exc))
+            return
         self._refresh_presets_combo()
         self.status_message.emit(f"Preset '{name}' excluído.")
 
     def set_params(self, params: dict) -> None:
         """
         Preenche múltiplos efeitos a partir dos dados extraídos pelo Tone Matching:
-          1. Noise Gate (Threshold dB)
-          2. Equalizador de 4 Bandas (Ganhos em 100Hz, 500Hz, 1.5kHz, 4.5kHz)
-          3. Overdrive (Tone ajustado ao Spectral Centroid e Drive sugerido)
-          4. Compressor (Threshold e Ratio sugeridos se houver faixa dinâmica ampla)
+          1. Equalizador de 4 Bandas (Ganhos em 100Hz, 500Hz, 1.5kHz, 4.5kHz)
+          2. Overdrive (Tone ajustado ao Spectral Centroid e Drive sugerido)
+          3. Compressor (Threshold e Ratio sugeridos se houver faixa dinâmica ampla)
+
+        O Noise Gate NÃO é alterado: o ruído de fundo da gravação analisada não
+        corresponde ao do instrumento de quem toca, então o threshold fica sempre
+        sob controle do usuário. A análise ainda calcula um valor sugerido
+        ("noise_gate_threshold_db"), exibido apenas como informação.
         """
         if not params:
             return
@@ -192,15 +200,7 @@ class TabHardware(QWidget):
         updated_modules = []
 
         try:
-            # 1. Noise Gate
-            gate_db = params.get("noise_gate_threshold_db")
-            gate_widget = self.effect_widgets.get("gate")
-            if gate_db is not None and gate_widget is not None:
-                gate_widget.set_param_value("gate_threshold", round(gate_db))
-                gate_widget.set_active(True)
-                updated_modules.append("Noise Gate")
-
-            # 2. Equalizador 4 Bandas
+            # 1. Equalizador 4 Bandas
             eq_4b = params.get("eq_4bands", {})
             eq_widget = self.effect_widgets.get("eq")
             if eq_4b and eq_widget is not None:
@@ -211,7 +211,7 @@ class TabHardware(QWidget):
                 eq_widget.set_active(True)
                 updated_modules.append("EQ (4 Bandas)")
 
-            # 3. Overdrive (Tone e Saturação)
+            # 2. Overdrive (Tone e Saturação)
             od_data = params.get("overdrive", {})
             od_widget = self.effect_widgets.get("overdrive")
             if od_data and od_widget is not None:
@@ -224,7 +224,7 @@ class TabHardware(QWidget):
                 else:
                     updated_modules.append("Overdrive (Tone)")
 
-            # 4. Compressor
+            # 3. Compressor
             comp_data = params.get("compressor", {})
             comp_widget = self.effect_widgets.get("comp")
             if comp_data and comp_widget is not None:
@@ -270,17 +270,14 @@ class TabHardware(QWidget):
                 self,
                 "Envio simulado (Modo MOCK)",
                 "Nenhuma ESP32-S3 física detectada na porta serial.\n\n"
-                "O pacote binário consolidado (140 bytes via COBS) foi codificado e simulado com sucesso.",
+                "Os parâmetros foram validados localmente, mas nada foi enviado.",
             )
         self.send_finished.emit(was_mock)
 
     def _on_send_error(self, err_msg: str) -> None:
         self.btn_send_hardware.setEnabled(True)
-        QMessageBox.critical(
-            self,
-            "Erro de Comunicação",
-            f"Não foi possível enviar o pacote para a ESP32-S3:\n\n{err_msg}",
-        )
+        # A caixa de erro é mostrada pela janela principal (main.py,
+        # _on_hardware_send_error); mostrar outra aqui duplicaria o aviso.
         self.send_error.emit(err_msg)
 
     def stop_threads(self) -> None:

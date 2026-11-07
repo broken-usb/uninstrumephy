@@ -2,13 +2,16 @@ import sys
 import logging
 from pathlib import Path
 
+from core import paths
 
-def setup_logging(log_dir: str | Path = "output/logs") -> logging.Logger:
+
+def setup_logging(log_dir: str | Path | None = None) -> logging.Logger:
     """
     Configura o sistema de logging para gravar mensagens no console (stdout)
     e em arquivo de texto. Rotaciona 'latest-log.txt' para 'previous-log.txt' a cada execução.
+    Sem log_dir, usa core.paths.logs_dir().
     """
-    log_path = Path(log_dir).resolve()
+    log_path = Path(log_dir if log_dir is not None else paths.logs_dir()).resolve()
     log_path.mkdir(parents=True, exist_ok=True)
 
     latest_log = log_path / "latest-log.txt"

@@ -13,6 +13,8 @@ from demucs.pretrained import get_model
 from demucs.apply import apply_model
 from demucs.audio import AudioFile
 
+from core import paths
+
 # Logger
 
 logger = logging.getLogger(__name__)
@@ -47,7 +49,7 @@ class AudioSeparator:
 
     def __init__(
         self,
-        output_dir: str = "output",
+        output_dir: str | Path | None = None,
         model_name: str | None = None,
         device: str | None = None,
         shifts: int = 1,
@@ -56,6 +58,7 @@ class AudioSeparator:
         """
         Args:
             output_dir: Diretório base onde os stems separados são salvos.
+                Se None, usa core.paths.stems_dir().
             model_name: Nome do modelo Demucs a usar (ver AVAILABLE_MODELS).
                 Se None, usa MODEL_NAME (htdemucs_6s), mantendo o
                 comportamento padrão anterior.
@@ -71,7 +74,7 @@ class AudioSeparator:
                 de mais tempo de processamento. Default: 0.25 (padrão do
                 Demucs).
         """
-        self.output_dir = Path(output_dir)
+        self.output_dir = Path(output_dir) if output_dir is not None else paths.stems_dir()
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self.model_name = model_name or self.MODEL_NAME
@@ -254,10 +257,26 @@ class AudioSeparator:
         progress_cb: Callable[[str], None] | None = None,
         force_reprocess: bool = False,
     ) -> str:
-        """Mantido por compatibilidade — equivalente a extract_stem(..., 'guitar')."""
+        """Separa as faixas e devolve a da guitarra.
+
+        Só o htdemucs_6s tem uma faixa "guitar". Os modelos de 4 faixas
+        (htdemucs, htdemucs_ft, mdx_extra) colocam a guitarra junto com os
+        demais instrumentos em "other"; nesse caso, é essa a faixa devolvida.
+        """
+        stem_name = self.DEFAULT_STEM
+        if stem_name not in self.model.sources:
+            stem_name = "other"
+            logger.info(
+                "Modelo %s não separa guitarra isoladamente; usando a faixa 'other'.",
+                self.model_name,
+            )
+            self._notify(
+                progress_cb,
+                f"O modelo {self.model_name} não isola a guitarra: ela fica na faixa 'other'.",
+            )
         return self.extract_stem(
             audio_path,
-            stem_name="guitar",
+            stem_name=stem_name,
             progress_cb=progress_cb,
             force_reprocess=force_reprocess,
         )

@@ -4,7 +4,7 @@ def test_core_imports():
     import core.analyzer
     import core.effects_spec
     import core.hardware
-    import core.presets
+    import core.presets  # noqa: F401
     assert True
 
 def test_gui_imports():
