@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Uninstrumephy
+GenericName=Tone Matcher
+Comment=Separa a guitarra de uma música e ajusta a pedaleira ESP32-S3 para o mesmo timbre
+Exec=uninstrumephy
+Icon=uninstrumephy
+Terminal=false
+Categories=AudioVideo;Audio;
+Keywords=guitarra;pedaleira;demucs;timbre;tone;

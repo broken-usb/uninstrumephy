@@ -173,7 +173,11 @@ class TabHardware(QWidget):
         if confirm != QMessageBox.StandardButton.Yes:
             return
 
-        delete_preset(name)
+        try:
+            delete_preset(name)
+        except PresetError as exc:
+            QMessageBox.critical(self, "Erro ao excluir preset", str(exc))
+            return
         self._refresh_presets_combo()
         self.status_message.emit(f"Preset '{name}' excluído.")
 
@@ -270,17 +274,14 @@ class TabHardware(QWidget):
                 self,
                 "Envio simulado (Modo MOCK)",
                 "Nenhuma ESP32-S3 física detectada na porta serial.\n\n"
-                "O pacote binário consolidado (140 bytes via COBS) foi codificado e simulado com sucesso.",
+                "Os parâmetros foram validados localmente, mas nada foi enviado.",
             )
         self.send_finished.emit(was_mock)
 
     def _on_send_error(self, err_msg: str) -> None:
         self.btn_send_hardware.setEnabled(True)
-        QMessageBox.critical(
-            self,
-            "Erro de Comunicação",
-            f"Não foi possível enviar o pacote para a ESP32-S3:\n\n{err_msg}",
-        )
+        # A caixa de erro é mostrada pela janela principal (main.py,
+        # _on_hardware_send_error); mostrar outra aqui duplicaria o aviso.
         self.send_error.emit(err_msg)
 
     def stop_threads(self) -> None:

@@ -602,7 +602,10 @@ class MainWindow(QDialog):
 
         self.combo_stems.addItems(stem_names)
         self.combo_stems.setEnabled(True)
-        default_index = stem_names.index("guitar") if "guitar" in stem_names else 0
+        # Seleciona a faixa que a separação devolveu como guitarra: "guitar"
+        # no htdemucs_6s, "other" nos modelos de 4 faixas.
+        preferred = Path(self.path_guitarra).stem if self.path_guitarra else "guitar"
+        default_index = stem_names.index(preferred) if preferred in stem_names else 0
         self.combo_stems.setCurrentIndex(default_index)
         self.combo_stems.blockSignals(False)
         self._propagate_stem_selection(stem_names[default_index])
@@ -817,7 +820,108 @@ class MainWindow(QDialog):
         event.accept()
 
 
+def _self_test() -> int:
+    """Verifica, sem abrir janela, se todas as partes do programa carregam.
+
+    Usado pelo build do AppImage (o release só é publicado se passar) e útil
+    para diagnosticar uma instalação: `main.py --self-test`.
+    """
+    import os
+    import platform
+    import tempfile
+
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    failures = 0
+
+    def check(name: str, fn) -> None:
+        nonlocal failures
+        try:
+            detail = fn()
+            print(f"[OK]    {name}" + (f": {detail}" if detail else ""))
+        except Exception as exc:
+            failures += 1
+            print(f"[FALHA] {name}: {type(exc).__name__}: {exc}")
+            logger.exception("Autoteste: %s", name)
+
+    print(f"Uninstrumephy — autoteste (Python {platform.python_version()}, {sys.executable})")
+
+    def torch_check():
+        import torch
+        torch.ones(4) @ torch.ones(4)
+        return f"torch {torch.__version__}, CUDA disponível: {torch.cuda.is_available()}"
+
+    def demucs_check():
+        from core.separator import AudioSeparator
+        import demucs
+        return f"demucs {getattr(demucs, '__version__', '?')}, modelos: {', '.join(AudioSeparator.AVAILABLE_MODELS)}"
+
+    def analysis_check():
+        import numpy as np
+        import soundfile as sf
+        from core.analyzer import AudioAnalyzer
+        with tempfile.TemporaryDirectory() as tmp:
+            wav = Path(tmp) / "tom.wav"
+            t = np.arange(22050) / 22050.0
+            sf.write(str(wav), 0.3 * np.sin(2 * np.pi * 220 * t), 22050)
+            params = AudioAnalyzer().analyze_stem(str(wav))
+        return f"gate {params['noise_gate_threshold_db']} dB, centroide {params['spectral_centroid_hz']} Hz"
+
+    def audio_check():
+        from core import audio_recorder
+        sd = audio_recorder._import_sounddevice()
+        return (f"{sd.get_portaudio_version()[1]} em {sd._libname}; "
+                f"{len(audio_recorder.list_input_devices())} entrada(s)")
+
+    def gui_check():
+        app = QApplication.instance() or QApplication(sys.argv)
+        _install_qt_translations(app)
+        theme.install(app)
+        window = MainWindow()
+        player = QMediaPlayer()
+        tabs = window.tabsMain.count()
+        window.close()
+        del player
+        return f"Qt {app.platformName()}, {tabs} abas"
+
+    def paths_check():
+        from core import paths
+        folder = paths.data_dir()
+        folder.mkdir(parents=True, exist_ok=True)
+        probe = folder / ".autoteste"
+        probe.write_text("ok", encoding="utf-8")
+        probe.unlink()
+        return f"dados em {folder} (gravável), presets em {paths.presets_dir()}"
+
+    def https_check():
+        # Sem certificados, o download dos modelos do Demucs (feito na primeira
+        # separação) falha. O Python do AppImage os recebe por SSL_CERT_FILE,
+        # definido pelo wrapper do python-appimage. Verificado sem usar a rede.
+        import ssl
+        verify = ssl.get_default_verify_paths()
+        loaded = ssl.create_default_context().cert_store_stats()["x509_ca"]
+        capath = Path(verify.capath) if verify.capath else None
+        if loaded == 0 and not (capath and capath.is_dir() and any(capath.iterdir())):
+            raise RuntimeError(
+                f"nenhum certificado encontrado (cafile={verify.cafile}, capath={verify.capath}); "
+                "o download dos modelos do Demucs falharia"
+            )
+        return f"{loaded} certificados carregados" if loaded else f"certificados em {capath}"
+
+    check("PyTorch", torch_check)
+    check("Demucs", demucs_check)
+    check("Certificados HTTPS", https_check)
+    check("Análise (librosa)", analysis_check)
+    check("Áudio (PortAudio)", audio_check)
+    check("Interface (Qt)", gui_check)
+    check("Pastas de dados", paths_check)
+    print("Resultado:", "tudo certo" if not failures else f"{failures} falha(s)")
+    return 1 if failures else 0
+
+
 if __name__ == "__main__":
+    if "--self-test" in sys.argv:
+        sys.exit(_self_test())
+
     if sys.platform == "win32":
         # Faz a barra de tarefas do Windows usar o ícone do app (e não o do Python).
         import ctypes

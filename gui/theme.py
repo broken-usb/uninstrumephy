@@ -23,12 +23,14 @@ Os widgets não devem chamar `setStyleSheet` por conta própria. Em vez disso:
 
 from __future__ import annotations
 
+import atexit
+import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QFont, QGuiApplication, QPalette
+from PyQt6.QtGui import QColor, QFont, QPalette
 from PyQt6.QtWidgets import QApplication
 
 
@@ -147,12 +149,30 @@ def _build_palette(t: Tokens) -> QPalette:
     return p
 
 
+_icon_cache: Path | None = None
+
+
+def _icon_cache_dir() -> Path:
+    """Pasta temporária própria desta execução, apagada ao fechar o programa.
+
+    Antes era uma pasta fixa (/tmp/uninstrumephy_theme), compartilhada por
+    todos os usuários do computador: ela ficava com o dono de quem abriu o
+    programa primeiro, e para os demais a gravação dos ícones falhava com
+    PermissionError e o programa nem abria.
+    """
+    global _icon_cache
+    if _icon_cache is None:
+        _icon_cache = Path(tempfile.mkdtemp(prefix="uninstrumephy-theme-"))
+        atexit.register(shutil.rmtree, _icon_cache, ignore_errors=True)
+    return _icon_cache
+
+
 def _write_icons(t: Tokens) -> dict[str, str]:
     """
     Gera pequenos ícones SVG com as cores do esquema atual (o QSS não desenha
     setas nem marcas de seleção sozinho). Retorna {nome: caminho com "/"}.
     """
-    folder = Path(tempfile.gettempdir()) / "uninstrumephy_theme" / ("dark" if t is DARK else "light")
+    folder = _icon_cache_dir() / ("dark" if t is DARK else "light")
     folder.mkdir(parents=True, exist_ok=True)
 
     def svg(name: str, body: str, size: int = 16) -> str:
@@ -165,7 +185,7 @@ def _write_icons(t: Tokens) -> dict[str, str]:
         )
         return path.as_posix()
 
-    dim, txt, on = t.text_dim, t.text, t.accent_text
+    txt, on = t.text, t.accent_text
     return {
         "down": svg("down", f'<path d="M3.5 6l4.5 4.5L12.5 6" stroke="{txt}" stroke-width="1.8"/>'),
         "down_dis": svg("down_dis", f'<path d="M3.5 6l4.5 4.5L12.5 6" stroke="{t.disabled_text}" stroke-width="1.8"/>'),

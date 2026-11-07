@@ -24,6 +24,8 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import QMessageBox, QWidget
 
+from core import paths
+
 _TRACEBACK_HEADER = "Traceback (most recent call last)"
 
 
@@ -80,6 +82,15 @@ def describe_error(error: str | BaseException) -> ErrorInfo:
             "Feche outros programas pesados e tente de novo, ou use um trecho menor da música.",
             details,
         )
+    if exc_type == "FileNotFoundError" and _quoted_path(message) in ("ffmpeg", "ffprobe"):
+        # O Demucs chama os programas ffmpeg/ffprobe para ler as músicas.
+        return ErrorInfo(
+            "O programa ffmpeg não está instalado.",
+            "Ele é necessário para separar as faixas com o Demucs. Instale-o "
+            "(Fedora: sudo dnf install ffmpeg-free; Ubuntu/Debian: sudo apt install ffmpeg) "
+            "e tente de novo.",
+            details,
+        )
     if exc_type == "FileNotFoundError":
         path = _quoted_path(message)
         return ErrorInfo(
@@ -97,7 +108,7 @@ def describe_error(error: str | BaseException) -> ErrorInfo:
     if "no space left on device" in lowered or "errno 28" in lowered:
         return ErrorInfo(
             "Não há espaço livre em disco.",
-            "Libere espaço (as separações ficam em output/) e tente de novo.",
+            f"Libere espaço (as separações ficam em {paths.stems_dir()}) e tente de novo.",
             details,
         )
     if exc_type == "LibsndfileError" or "format not recognised" in lowered or "error opening" in lowered:

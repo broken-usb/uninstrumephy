@@ -10,14 +10,18 @@ O software usa Inteligência Artificial para separar os instrumentos da faixa e 
 
 - [Funcionalidades](#funcionalidades)
 - [Requisitos](#requisitos)
+- [AppImage (sem instalar o Python)](#appimage-sem-instalar-o-python)
 - [Instalação](#instalação)
 - [Uso](#uso)
+- [Onde ficam os dados](#onde-ficam-os-dados)
 - [Integração com o hardware (Placa A)](#integração-com-o-hardware-placa-a)
   - [Controle via CDC](#controle-via-cdc)
   - [Presets de demonstração](#presets-de-demonstração)
   - [Escutar a pedaleira no computador](#escutar-a-pedaleira-no-computador)
   - [Solução de problemas](#solução-de-problemas)
 - [Estrutura do repositório](#estrutura-do-repositório)
+- [Testes](#testes)
+- [Publicar uma versão (AppImage)](#publicar-uma-versão-appimage)
 - [Créditos](#créditos)
 - [Licença](#licença)
 
@@ -40,6 +44,19 @@ O software usa Inteligência Artificial para separar os instrumentos da faixa e 
 O Demucs (Torch) é obrigatório, pois a separação de guitarra faz parte do fluxo principal. Sem ele, o programa interrompe a inicialização em vez de ocultar a funcionalidade.
 
 Principais bibliotecas: `PyQt6`, `sounddevice`, `soundfile`, `numpy`, `pyserial`, `tinytag` (metadados), `librosa` e `matplotlib` (aba de Tone Matching).
+
+## AppImage (sem instalar o Python)
+
+Cada versão publicada em [Releases](https://github.com/broken-usb/uninstrumephy/releases) traz um arquivo `Uninstrumephy-<versão>-x86_64.AppImage` com tudo incluído (Python, Demucs, PyTorch e Qt):
+
+```bash
+chmod +x Uninstrumephy-*-x86_64.AppImage
+./Uninstrumephy-*-x86_64.AppImage
+```
+
+O único requisito externo é o **FFmpeg** (veja a tabela em [Instalação](#instalação)), usado pelo Demucs para ler as músicas. Na primeira separação, o modelo do Demucs é baixado da internet uma única vez.
+
+O AppImage usa o PyTorch **só para CPU**, porque a versão com CUDA ultrapassaria o limite de 2 GB por arquivo das releases do GitHub. Para separar faixas pela GPU (NVIDIA), instale a partir do código-fonte, como abaixo.
 
 ## Instalação
 
@@ -100,6 +117,22 @@ Com `uv`:
 ```bash
 uv run main.py
 ```
+
+Para conferir se tudo está funcionando (PyTorch, Demucs, certificados HTTPS, análise, áudio, interface e pastas) sem abrir a janela:
+
+```bash
+./Uninstrumephy-*-x86_64.AppImage --self-test   # pelo AppImage
+python main.py --self-test                      # pelo código-fonte
+```
+
+## Onde ficam os dados
+
+| Executando a partir de | Logs, gravações e faixas separadas | Presets |
+| --- | --- | --- |
+| Código-fonte | `output/` na pasta do projeto | `presets/` na pasta do projeto |
+| AppImage | `~/.local/share/uninstrumephy/` | `~/.local/share/uninstrumephy/presets/` (criada na primeira execução com os presets de demonstração) |
+
+A variável de ambiente `UNINSTRUMEPHY_DATA_DIR` substitui essa pasta em ambos os casos. O log da sessão atual fica em `logs/latest-log.txt`, e o da anterior em `logs/previous-log.txt`.
 
 ## Integração com o hardware (Placa A)
 
@@ -168,18 +201,52 @@ Detalhes importantes:
 | Saída não aceita 44,1 kHz mono | O diálogo informa o erro. Escolha outra saída ou ajuste o dispositivo no sistema operacional. |
 | Entrada genérica de 48 kHz selecionada | Ela não substitui a UAC de 44,1 kHz. Escolha `ESP32-S3 Processed Audio`. |
 | `Device unavailable` | Outra captura pode estar usando a interface ALSA em modo exclusivo. Pare o gravador anterior (ou `arecord`), aguarde a UAC liberar o dispositivo e inicie o monitor novamente. |
+| `PortAudio library not found` | Instale a PortAudio (Fedora: `sudo dnf install portaudio`; Ubuntu/Debian: `sudo apt install libportaudio2`). O AppImage já traz uma cópia de reserva. |
 | Avisos de `input/output underflow/overflow` | O host está perdendo blocos. Reduza a carga do computador ou aumente o buffer da DAW para 128 amostras. |
 
 ## Estrutura do repositório
 
 ```text
 .
+├── .github/workflows/ # CI (testes) e release (AppImage)
 ├── core/              # Lógica principal (separação, análise, protocolo)
-├── gui/               # Interface Qt6
+├── gui/               # Interface Qt6 (.ui do Qt Designer + código)
+├── packaging/         # Montagem do AppImage
 ├── presets/           # Presets JSON de demonstração
-├── tests/             # Testes
+├── tests/             # Testes (pytest)
 ├── main.py            # Ponto de entrada
 └── requirements.txt   # Dependências
+```
+
+A interface é definida pelos arquivos `.ui` em `gui/`, carregados em tempo de execução por `gui/ui_loader.py`. Para mudar o layout, edite-os no Qt Designer; não é preciso gerar código com `pyuic6`.
+
+## Testes
+
+```bash
+pip install pytest
+QT_QPA_PLATFORM=offscreen python -m pytest
+```
+
+Os testes não precisam da pedaleira nem de placa de som (ambas são simuladas) e gravam seus dados numa pasta temporária, nunca em `output/`.
+
+## Publicar uma versão (AppImage)
+
+O workflow [`release.yml`](.github/workflows/release.yml) roda os testes, monta o AppImage, testa o AppImage pronto (`--self-test`) e só então cria a release com o arquivo anexado. Se qualquer etapa falhar, nada é publicado. Há duas formas de iniciá-lo:
+
+- **Pelo GitHub:** aba **Actions** > **Release (AppImage)** > **Run workflow**, informe a versão (ex.: `1.0.0`) e, se quiser, marque *pré-lançamento*. A tag `v1.0.0` é criada no commit escolhido.
+- **Por tag:**
+
+  ```bash
+  git tag v1.0.0
+  git push origin v1.0.0
+  ```
+
+O build demora alguns minutos (baixar e empacotar o PyTorch é a parte mais lenta). O AppImage também fica disponível por 14 dias nos artefatos da execução, mesmo que a publicação falhe.
+
+Para montar localmente (Linux x86_64, com `gcc`, `make`, `curl`, os cabeçalhos da ALSA e a `libxcb-cursor`; Fedora: `sudo dnf install gcc make alsa-lib-devel xcb-util-cursor curl`):
+
+```bash
+bash packaging/build_appimage.sh 1.0.0   # gera dist/Uninstrumephy-1.0.0-x86_64.AppImage
 ```
 
 ## Créditos

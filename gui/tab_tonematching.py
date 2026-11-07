@@ -133,7 +133,6 @@ class TabToneMatching(QWidget):
         centroid_hz = params.get("spectral_centroid_hz", 0.0)
         centroid_curve = params.get("spectral_centroid_curve", [])
         overdrive = params.get("overdrive", {})
-        comp = params.get("compressor", {})
 
         # Resumo legível na interface contendo múltiplos dados calculados
         summary_text = (

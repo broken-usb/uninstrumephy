@@ -7,6 +7,7 @@ from typing import Optional
 from PyQt6.QtWidgets import QDialog, QPushButton, QMessageBox
 from PyQt6.QtCore import QSize, Qt, QTimer, pyqtSignal
 
+from core import paths
 from gui import icons, theme
 from gui.ui_loader import load_ui_file
 from core.audio_recorder import (
@@ -37,9 +38,9 @@ class RecordDialog(QDialog):
     )
     DEFAULT_DURATION_INDEX = 2
 
-    def __init__(self, parent=None, default_output_dir: str = "output/recordings") -> None:
+    def __init__(self, parent=None, default_output_dir: str | Path | None = None) -> None:
         super().__init__(parent)
-        self.output_dir = Path(default_output_dir)
+        self.output_dir = Path(default_output_dir) if default_output_dir else paths.recordings_dir()
         self.output_dir.mkdir(parents=True, exist_ok=True)
 
         self.recorded_filepath: Optional[str] = None

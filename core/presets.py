@@ -4,14 +4,18 @@ import json
 import logging
 from pathlib import Path
 
+from core import paths
 from core.effects_spec import EFFECT_SPECS
 
 logger = logging.getLogger(__name__)
 
-# Diretório padrão onde os presets são salvos. Resolvido a partir deste
-# módulo para que os presets incluídos funcionem mesmo quando o aplicativo é
-# iniciado a partir de outro diretório (por exemplo, por um atalho desktop).
-DEFAULT_PRESETS_DIR = Path(__file__).resolve().parent.parent / "presets"
+# Presets incluídos com o programa. A pasta usada de fato (que pode ser a do
+# usuário, quando empacotado em AppImage) vem de core.paths.presets_dir().
+DEFAULT_PRESETS_DIR = paths.BUNDLED_PRESETS_DIR
+
+
+def _resolve(presets_dir: Path | None) -> Path:
+    return presets_dir if presets_dir is not None else paths.presets_dir()
 
 # Versão do formato do arquivo de preset. Incrementar se o layout do
 # JSON mudar de forma incompatível no futuro (ex.: campos renomeados).
@@ -139,8 +143,9 @@ def apply_preset_dict(preset: dict, effect_widgets: dict) -> list[str]:
     return warnings
 
 
-def list_presets(presets_dir: Path = DEFAULT_PRESETS_DIR) -> list[str]:
+def list_presets(presets_dir: Path | None = None) -> list[str]:
     """Lista os nomes (sem extensão) dos presets salvos em presets_dir."""
+    presets_dir = _resolve(presets_dir)
     if not presets_dir.exists():
         return []
     return sorted(p.stem for p in presets_dir.glob("*.json"))
@@ -149,7 +154,7 @@ def list_presets(presets_dir: Path = DEFAULT_PRESETS_DIR) -> list[str]:
 def save_preset(
     name: str,
     effect_widgets: dict,
-    presets_dir: Path = DEFAULT_PRESETS_DIR,
+    presets_dir: Path | None = None,
 ) -> Path:
     """
     Salva o estado atual dos EffectWidgets como um preset nomeado.
@@ -177,7 +182,11 @@ def save_preset(
             f"O nome do preset não pode conter os caracteres: {invalid_chars}"
         )
 
-    presets_dir.mkdir(parents=True, exist_ok=True)
+    presets_dir = _resolve(presets_dir)
+    try:
+        presets_dir.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        raise PresetError(f"Não foi possível criar a pasta de presets {presets_dir}: {exc}") from exc
     file_path = presets_dir / f"{safe_name}.json"
 
     preset_dict = build_preset_dict(effect_widgets)
@@ -195,7 +204,7 @@ def save_preset(
 def load_preset(
     name: str,
     effect_widgets: dict,
-    presets_dir: Path = DEFAULT_PRESETS_DIR,
+    presets_dir: Path | None = None,
 ) -> list[str]:
     """
     Carrega um preset salvo e aplica seus valores aos EffectWidgets.
@@ -208,6 +217,7 @@ def load_preset(
     Raises:
         PresetError: Se o arquivo não existir ou estiver malformado.
     """
+    presets_dir = _resolve(presets_dir)
     file_path = presets_dir / f"{name}.json"
 
     if not file_path.exists():
@@ -231,9 +241,12 @@ def load_preset(
     return warnings
 
 
-def delete_preset(name: str, presets_dir: Path = DEFAULT_PRESETS_DIR) -> None:
+def delete_preset(name: str, presets_dir: Path | None = None) -> None:
     """Remove um preset salvo. Não lança erro se ele não existir."""
-    file_path = presets_dir / f"{name}.json"
+    file_path = _resolve(presets_dir) / f"{name}.json"
     if file_path.exists():
-        file_path.unlink()
+        try:
+            file_path.unlink()
+        except OSError as exc:
+            raise PresetError(f"Não foi possível excluir o preset '{name}': {exc}") from exc
         logger.info(f"Preset '{name}' removido ({file_path}).")
