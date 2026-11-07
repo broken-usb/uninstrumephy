@@ -1,0 +1,147 @@
+name: Release (AppImage)
+
+# Duas formas de publicar uma versão:
+#   1. Aba Actions > "Release (AppImage)" > Run workflow > informe a versão
+#      (ex.: 1.0.0). A tag v1.0.0 é criada no commit escolhido.
+#   2. Enviar uma tag:  git tag v1.0.0 && git push origin v1.0.0
+#
+# Em ambos os casos o código é testado, o AppImage é montado e testado
+# (--self-test), e só então a release é criada com o AppImage anexado.
+# Se algo falhar, nada é publicado.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Versão (ex.: 1.0.0). Cria a tag v<versão> no commit escolhido."
+        required: true
+        type: string
+      prerelease:
+        description: "Marcar como pré-lançamento (versão de teste)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ inputs.version || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  GH_TOKEN: ${{ github.token }}
+  GH_REPO: ${{ github.repository }}
+
+jobs:
+  appimage:
+    name: Testar, montar e publicar o AppImage
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Definir a versão
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            version="${GITHUB_REF_NAME#v}"
+          else
+            version="${INPUT_VERSION#v}"
+          fi
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.]+)?$'; then
+            echo "::error::Versão inválida: '$version'. Use o formato 1.2.3 (ou 1.2.3-beta.1)."
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Baixar o código
+        uses: actions/checkout@v7
+
+      - name: Verificar se a versão já foi publicada
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "::error::A release $TAG já existe. Escolha outra versão."
+            exit 1
+          fi
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] \
+             && git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+            echo "::error::A tag $TAG já existe. Escolha outra versão ou publique pela tag."
+            exit 1
+          fi
+
+      - name: Instalar dependências do sistema
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential libasound2-dev libxcb-cursor0 \
+            libegl1 libgl1 libxkbcommon-x11-0 libdbus-1-3 libfontconfig1 libsndfile1
+
+      - name: Configurar Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Instalar dependências Python (PyTorch só CPU)
+        run: |
+          python -m pip install --upgrade pip
+          pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
+          pip install -r requirements.txt pytest flake8
+
+      - name: Lint
+        run: flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      - name: Testes
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -q
+
+      - name: Montar e testar o AppImage
+        run: bash packaging/build_appimage.sh "${{ steps.version.outputs.version }}"
+
+      - name: Guardar o AppImage nos artefatos da execução
+        uses: actions/upload-artifact@v7
+        with:
+          name: Uninstrumephy-${{ steps.version.outputs.version }}-x86_64
+          path: dist/*.AppImage
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Publicar a release
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          PRERELEASE: ${{ inputs.prerelease }}
+        run: |
+          cat > notes.md <<'EOF'
+          ## Como usar
+
+          1. Baixe o arquivo `.AppImage` abaixo.
+          2. Dê permissão de execução: `chmod +x Uninstrumephy-*.AppImage`
+             (ou pelas propriedades do arquivo, no gerenciador de arquivos).
+          3. Abra com um duplo clique ou `./Uninstrumephy-*.AppImage`.
+
+          **Requisitos:** Linux x86_64 e o `ffmpeg` instalado, usado pelo Demucs para ler as músicas
+          (veja como instalar na seção *Instalação* do README).
+          Na primeira separação, o modelo do Demucs é baixado da internet (uma vez só).
+
+          Esta versão usa o PyTorch para CPU. Para separar faixas pela GPU (NVIDIA/CUDA), rode o
+          programa a partir do código-fonte (veja o README).
+
+          Seus dados (logs, gravações e presets) ficam em `~/.local/share/uninstrumephy`.
+          EOF
+          # --notes é colocado antes das notas geradas a partir dos commits/PRs.
+          args=(--title "Uninstrumephy $VERSION" --notes "$(cat notes.md)" --generate-notes)
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            args+=(--target "$GITHUB_SHA")
+          fi
+          if [ "$PRERELEASE" = "true" ]; then
+            args+=(--prerelease)
+          fi
+          gh release create "$TAG" dist/*.AppImage "${args[@]}"
