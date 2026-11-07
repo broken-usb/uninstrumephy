@@ -6,16 +6,16 @@
 # Gera dist/Uninstrumephy-<versão>-x86_64.AppImage e o testa com --self-test.
 # É o mesmo script usado pelo GitHub Actions (.github/workflows/release.yml).
 #
-# Precisa de: curl, git, gcc, make, sha256sum, os cabeçalhos da ALSA (para
-# compilar a PortAudio) e a libxcb-cursor (embutida para o Qt abrir em X11):
-#   Ubuntu/Debian: sudo apt install build-essential git libasound2-dev libxcb-cursor0 curl
-#   Fedora:        sudo dnf install gcc make git alsa-lib-devel xcb-util-cursor curl
+# Precisa de: curl, git, gcc, make, sha256sum, mksquashfs (squashfs-tools),
+# os cabeçalhos da ALSA (para compilar a PortAudio) e a libxcb-cursor
+# (embutida para o Qt abrir em X11):
+#   Ubuntu/Debian: sudo apt install build-essential git squashfs-tools libasound2-dev libxcb-cursor0 curl
+#   Fedora:        sudo dnf install gcc make git squashfs-tools alsa-lib-devel xcb-util-cursor curl
 #
 # Variáveis opcionais (reaproveitar arquivos em builds locais; quem as define
 # é responsável pela origem do arquivo, que NÃO é conferida pelo SHA-256):
 #   BASE_APPIMAGE    AppImage do python-appimage já baixado
 #   PYTHON_VERSION   versão desse AppImage (só junto com BASE_APPIMAGE)
-#   APPIMAGETOOL     appimagetool já baixado
 #   RUNTIME_FILE     runtime do AppImage (type2-runtime) já baixado
 #   PORTAUDIO_LIB    libportaudio.so.2 já compilada (com suporte a ALSA)
 #   XCB_CURSOR_LIB   libxcb-cursor.so.0 a embutir (padrão: a do sistema)
@@ -43,11 +43,8 @@ PYTHON_APPIMAGE_VERSION="3.12"
 PYTHON_APPIMAGE_URL="https://github.com/niess/python-appimage/releases/download/python3.12/python3.12.15-cp312-cp312-manylinux_2_28_x86_64.AppImage"
 PYTHON_APPIMAGE_SHA256="929ce69b45955bfc74af81fd65a65c3ad240593c99b3574466a94ebf0f987ebf"
 
-APPIMAGETOOL_URL="https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage"
-APPIMAGETOOL_SHA256="ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0"
-
-# Parte executável embutida em todo AppImage. Sem --runtime-file, o
-# appimagetool a baixaria sozinho da versão "continuous", sem conferência.
+# Parte executável que fica no início de todo AppImage: ao abrir o arquivo,
+# ela monta (ou extrai) o sistema de arquivos comprimido anexado logo depois.
 RUNTIME_URL="https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64"
 RUNTIME_SHA256="2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d"
 
@@ -175,20 +172,33 @@ cp "$ROOT/gui/icons/app.png" "$APPDIR/usr/share/icons/hicolor/512x512/apps/unins
 sed "s/@PYTHON_VERSION@/$PYTHON_VERSION/g" "$ROOT/packaging/AppRun" > "$APPDIR/AppRun"
 chmod 755 "$APPDIR/AppRun"
 
-step "6/8 appimagetool e runtime do AppImage"
-TOOL="${APPIMAGETOOL:-}"
-if [[ -z "$TOOL" ]]; then
-    TOOL="$WORK/appimagetool"
-    fetch_verified "$APPIMAGETOOL_URL" "$APPIMAGETOOL_SHA256" "$TOOL"
-    chmod +x "$TOOL"
+step "6/8 Empacotamento (runtime + squashfs)"
+# Um AppImage (tipo 2) é o runtime seguido de um sistema de arquivos squashfs
+# com o AppDir. Isto faz o mesmo que o appimagetool, com o mksquashfs da
+# própria distribuição: mesmas opções (zstd, blocos de 128K, arquivos como
+# root, data zerada) e o squashfs começando logo após o runtime. O
+# appimagetool só acrescentaria dados opcionais (atualização automática e
+# assinatura GPG), que este projeto não usa.
+command -v mksquashfs >/dev/null || die "mksquashfs não encontrado (instale squashfs-tools)"
+[[ -x "$APPDIR/AppRun" && -e "$APPDIR/.DirIcon" && -f "$APPDIR/uninstrumephy.desktop" ]] \
+    || die "AppDir incompleto: precisa de AppRun, .DirIcon e uninstrumephy.desktop"
+if command -v desktop-file-validate >/dev/null; then
+    desktop-file-validate "$APPDIR/uninstrumephy.desktop" || die "uninstrumephy.desktop inválido"
 fi
 RUNTIME="${RUNTIME_FILE:-}"
 if [[ -z "$RUNTIME" ]]; then
     RUNTIME="$WORK/runtime-$ARCH"
     fetch_verified "$RUNTIME_URL" "$RUNTIME_SHA256" "$RUNTIME"
 fi
+# Assinatura do formato: "AI" + versão 2 no byte 8 (especificação do AppImage).
+[[ "$(od -An -tx1 -j8 -N3 "$RUNTIME" | tr -d ' \n')" == "414902" ]] \
+    || die "o runtime ($RUNTIME) não é um runtime de AppImage tipo 2"
+runtime_size="$(stat -c %s "$RUNTIME")"
 rm -f "$OUTPUT"
-ARCH="$ARCH" APPIMAGE_EXTRACT_AND_RUN=1 "$TOOL" --runtime-file "$RUNTIME" "$APPDIR" "$OUTPUT"
+mksquashfs "$APPDIR" "$OUTPUT" -offset "$runtime_size" -comp zstd -b 128K \
+    -root-owned -noappend -mkfs-time 0 -quiet -no-progress
+dd if="$RUNTIME" of="$OUTPUT" conv=notrunc status=none   # grava o runtime no início
+chmod 755 "$OUTPUT"
 
 step "7/8 Tamanho"
 size="$(stat -c %s "$OUTPUT")"

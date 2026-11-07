@@ -243,9 +243,9 @@ O workflow [`release.yml`](.github/workflows/release.yml) roda os testes, monta 
 
 O build demora alguns minutos (baixar e empacotar o PyTorch é a parte mais lenta). O AppImage também fica disponível por 14 dias nos artefatos da execução, mesmo que a publicação falhe. A release traz um `SHA256SUMS.txt` para conferir o download (`sha256sum -c SHA256SUMS.txt`).
 
-As ferramentas externas usadas no build (Python portátil, `appimagetool`, runtime do AppImage e PortAudio) estão fixadas em versões exatas e conferidas por SHA-256 ou pelo commit do Git. Se uma delas mudar na origem, o build para em vez de publicar algo não conferido. Para atualizar uma versão, veja as instruções no topo de `packaging/build_appimage.sh`.
+O empacotamento usa o `mksquashfs` da própria distribuição, sem ferramentas de empacotamento de terceiros. As peças baixadas de fora (Python portátil, runtime do AppImage e PortAudio) estão fixadas em versões exatas e conferidas por SHA-256 ou pelo commit do Git: se uma delas mudar na origem, o build para em vez de publicar algo não conferido. Para atualizar uma versão, veja as instruções no topo de `packaging/build_appimage.sh`.
 
-Para montar localmente (Linux x86_64, com `gcc`, `make`, `git`, `curl`, os cabeçalhos da ALSA e a `libxcb-cursor`; Fedora: `sudo dnf install gcc make git alsa-lib-devel xcb-util-cursor curl`):
+Para montar localmente (Linux x86_64, com `gcc`, `make`, `git`, `curl`, `squashfs-tools`, os cabeçalhos da ALSA e a `libxcb-cursor`; Fedora: `sudo dnf install gcc make git curl squashfs-tools alsa-lib-devel xcb-util-cursor`):
 
 ```bash
 bash packaging/build_appimage.sh 1.0.0   # gera dist/Uninstrumephy-1.0.0-x86_64.AppImage
