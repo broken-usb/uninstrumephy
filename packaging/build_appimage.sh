@@ -6,15 +6,17 @@
 # Gera dist/Uninstrumephy-<versão>-x86_64.AppImage e o testa com --self-test.
 # É o mesmo script usado pelo GitHub Actions (.github/workflows/release.yml).
 #
-# Precisa de: curl, tar, gcc, make, os cabeçalhos da ALSA (para compilar a
-# PortAudio) e a libxcb-cursor (embutida para o Qt abrir em sessões X11):
-#   Ubuntu/Debian: sudo apt install build-essential libasound2-dev libxcb-cursor0 curl
-#   Fedora:        sudo dnf install gcc make alsa-lib-devel xcb-util-cursor curl
+# Precisa de: curl, git, gcc, make, sha256sum, os cabeçalhos da ALSA (para
+# compilar a PortAudio) e a libxcb-cursor (embutida para o Qt abrir em X11):
+#   Ubuntu/Debian: sudo apt install build-essential git libasound2-dev libxcb-cursor0 curl
+#   Fedora:        sudo dnf install gcc make git alsa-lib-devel xcb-util-cursor curl
 #
-# Variáveis opcionais (reaproveitar downloads em builds locais):
-#   PYTHON_VERSION   Python embutido (padrão: 3.12)
+# Variáveis opcionais (reaproveitar arquivos em builds locais; quem as define
+# é responsável pela origem do arquivo, que NÃO é conferida pelo SHA-256):
 #   BASE_APPIMAGE    AppImage do python-appimage já baixado
+#   PYTHON_VERSION   versão desse AppImage (só junto com BASE_APPIMAGE)
 #   APPIMAGETOOL     appimagetool já baixado
+#   RUNTIME_FILE     runtime do AppImage (type2-runtime) já baixado
 #   PORTAUDIO_LIB    libportaudio.so.2 já compilada (com suporte a ALSA)
 #   XCB_CURSOR_LIB   libxcb-cursor.so.0 a embutir (padrão: a do sistema)
 #   TORCH_INDEX_URL  índice do PyTorch (padrão: versão só para CPU)
@@ -25,9 +27,42 @@ VERSION="${1:-}"
 [[ -n "$VERSION" ]] || { echo "Uso: $0 <versão>   (ex.: $0 1.0.0)" >&2; exit 2; }
 VERSION="${VERSION#v}"
 
-PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
-TORCH_INDEX_URL="${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}"
+# --------------------------------------------------------------------------- #
+# Downloads externos: versão exata + SHA-256
+# --------------------------------------------------------------------------- #
+# Tudo o que vem de fora e é executado ou embutido no AppImage está fixado
+# numa versão exata e conferido pelo SHA-256 antes do uso. Assim, uma
+# alteração nesses repositórios (nova versão ou arquivo adulterado) faz o
+# build PARAR, em vez de entrar silenciosamente no AppImage publicado.
+#
+# Para atualizar uma versão: na página da release do projeto, o GitHub mostra
+# o SHA-256 ao lado de cada arquivo ("sha256:..."). Troque a URL e o hash
+# juntos. O python-appimage substitui o arquivo quando sai um novo 3.12.x:
+# se o download der 404, é hora de atualizar estas duas linhas.
+PYTHON_APPIMAGE_VERSION="3.12"
+PYTHON_APPIMAGE_URL="https://github.com/niess/python-appimage/releases/download/python3.12/python3.12.15-cp312-cp312-manylinux_2_28_x86_64.AppImage"
+PYTHON_APPIMAGE_SHA256="929ce69b45955bfc74af81fd65a65c3ad240593c99b3574466a94ebf0f987ebf"
+
+APPIMAGETOOL_URL="https://github.com/AppImage/appimagetool/releases/download/1.9.1/appimagetool-x86_64.AppImage"
+APPIMAGETOOL_SHA256="ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0"
+
+# Parte executável embutida em todo AppImage. Sem --runtime-file, o
+# appimagetool a baixaria sozinho da versão "continuous", sem conferência.
+RUNTIME_URL="https://github.com/AppImage/type2-runtime/releases/download/20251108/runtime-x86_64"
+RUNTIME_SHA256="2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d"
+
+# A PortAudio não publica arquivos de release: o código-fonte vem do Git e é
+# conferido pelo hash do commit (que identifica o conteúdo exato).
+PORTAUDIO_REPO="https://github.com/PortAudio/portaudio.git"
 PORTAUDIO_TAG="v19.7.0"
+PORTAUDIO_COMMIT="147dd722548358763a8b649b3e4b41dfffbcfbb6"
+
+if [[ -n "${BASE_APPIMAGE:-}" ]]; then
+    PYTHON_VERSION="${PYTHON_VERSION:-$PYTHON_APPIMAGE_VERSION}"
+else
+    PYTHON_VERSION="$PYTHON_APPIMAGE_VERSION"
+fi
+TORCH_INDEX_URL="${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}"
 ARCH="x86_64"
 MAX_ASSET_BYTES=$((2 * 1024 * 1024 * 1024))   # limite do GitHub por arquivo de release
 
@@ -46,18 +81,20 @@ unset PYTHONPATH PYTHONHOME
 step() { printf '\n==> %s\n' "$*"; }
 die() { printf '\nERRO: %s\n' "$*" >&2; exit 1; }
 
-# Baixa um arquivo de uma release do GitHub. Usa o gh (autenticado, como no
-# Actions) se disponível; senão, lê a lista pública de arquivos da release.
-download_release_asset() {
-    local repo="$1" tag="$2" glob="$3" regex="$4" dest="$5" name
-    if command -v gh >/dev/null 2>&1 && gh auth status >/dev/null 2>&1; then
-        gh release download "$tag" --repo "$repo" --pattern "$glob" --output "$dest" --clobber
-        return
+# Baixa um arquivo e só o entrega se o SHA-256 bater com o esperado. Não usa
+# token nenhum: são downloads públicos.
+fetch_verified() {
+    local url="$1" sha256="$2" dest="$3"
+    rm -f "$dest" "$dest.part"
+    curl -fL --retry 3 --proto '=https' --tlsv1.2 -o "$dest.part" "$url" \
+        || die "falha ao baixar $url (se for 404, a versão fixada saiu do ar: veja o topo do script)"
+    if ! printf '%s  %s\n' "$sha256" "$dest.part" | sha256sum --check --status; then
+        die "SHA-256 inesperado para $url
+       esperado: $sha256
+       recebido: $(sha256sum "$dest.part" | cut -d' ' -f1)
+       O arquivo foi alterado na origem. Não use este build; confira a release antes de atualizar o hash."
     fi
-    name="$(curl -fsSL "https://github.com/$repo/releases/expanded_assets/$tag" \
-        | grep -oE "$regex" | head -n 1)" || true
-    [[ -n "$name" ]] || die "não encontrei '$glob' na release $tag de $repo"
-    curl -fL --retry 3 -o "$dest" "https://github.com/$repo/releases/download/$tag/$name"
+    mv "$dest.part" "$dest"
 }
 
 rm -rf "$WORK"
@@ -68,10 +105,7 @@ step "1/8 Python $PYTHON_VERSION portátil (python-appimage, manylinux_2_28)"
 if [[ -n "${BASE_APPIMAGE:-}" ]]; then
     cp "$BASE_APPIMAGE" python.AppImage
 else
-    download_release_asset niess/python-appimage "python$PYTHON_VERSION" \
-        "python$PYTHON_VERSION.*-manylinux_2_28_$ARCH.AppImage" \
-        "python${PYTHON_VERSION//./\\.}\.[0-9]+-cp[0-9]+-cp[0-9]+-manylinux_2_28_$ARCH\.AppImage" \
-        python.AppImage
+    fetch_verified "$PYTHON_APPIMAGE_URL" "$PYTHON_APPIMAGE_SHA256" python.AppImage
 fi
 chmod +x python.AppImage
 ./python.AppImage --appimage-extract >/dev/null   # não precisa de FUSE
@@ -102,14 +136,18 @@ step "4/8 Bibliotecas nativas: PortAudio $PORTAUDIO_TAG (reserva) e libxcb-curso
 if [[ -n "${PORTAUDIO_LIB:-}" ]]; then
     cp "$PORTAUDIO_LIB" "$APP/lib/libportaudio.so.2"
 else
-    curl -fsSL "https://github.com/PortAudio/portaudio/archive/refs/tags/$PORTAUDIO_TAG.tar.gz" | tar xz
+    git -c advice.detachedHead=false clone --quiet --depth 1 --branch "$PORTAUDIO_TAG" \
+        "$PORTAUDIO_REPO" portaudio
+    got="$(git -C portaudio rev-parse HEAD)"
+    [[ "$got" == "$PORTAUDIO_COMMIT" ]] \
+        || die "a tag $PORTAUDIO_TAG da PortAudio aponta para $got, e não para o commit fixado $PORTAUDIO_COMMIT"
     (
-        cd "portaudio-${PORTAUDIO_TAG#v}"
+        cd portaudio
         # Só ALSA: no Linux atual o PipeWire/PulseAudio atende pela ALSA.
         ./configure --quiet --disable-static --with-alsa --without-jack --without-oss
         make -j"$(nproc)" >/dev/null
     )
-    cp "portaudio-${PORTAUDIO_TAG#v}/lib/.libs/libportaudio.so.2.0.0" "$APP/lib/libportaudio.so.2"
+    cp portaudio/lib/.libs/libportaudio.so.2.0.0 "$APP/lib/libportaudio.so.2"
 fi
 grep -q "PaAlsa_" "$APP/lib/libportaudio.so.2" \
     || die "a PortAudio foi compilada sem suporte a ALSA (instale libasound2-dev / alsa-lib-devel)"
@@ -137,16 +175,20 @@ cp "$ROOT/gui/icons/app.png" "$APPDIR/usr/share/icons/hicolor/512x512/apps/unins
 sed "s/@PYTHON_VERSION@/$PYTHON_VERSION/g" "$ROOT/packaging/AppRun" > "$APPDIR/AppRun"
 chmod 755 "$APPDIR/AppRun"
 
-step "6/8 appimagetool"
+step "6/8 appimagetool e runtime do AppImage"
 TOOL="${APPIMAGETOOL:-}"
 if [[ -z "$TOOL" ]]; then
     TOOL="$WORK/appimagetool"
-    download_release_asset AppImage/appimagetool continuous \
-        "appimagetool-$ARCH.AppImage" "appimagetool-$ARCH\.AppImage" "$TOOL"
+    fetch_verified "$APPIMAGETOOL_URL" "$APPIMAGETOOL_SHA256" "$TOOL"
     chmod +x "$TOOL"
 fi
+RUNTIME="${RUNTIME_FILE:-}"
+if [[ -z "$RUNTIME" ]]; then
+    RUNTIME="$WORK/runtime-$ARCH"
+    fetch_verified "$RUNTIME_URL" "$RUNTIME_SHA256" "$RUNTIME"
+fi
 rm -f "$OUTPUT"
-ARCH="$ARCH" APPIMAGE_EXTRACT_AND_RUN=1 "$TOOL" "$APPDIR" "$OUTPUT"
+ARCH="$ARCH" APPIMAGE_EXTRACT_AND_RUN=1 "$TOOL" --runtime-file "$RUNTIME" "$APPDIR" "$OUTPUT"
 
 step "7/8 Tamanho"
 size="$(stat -c %s "$OUTPUT")"

@@ -8,6 +8,13 @@ name: Release (AppImage)
 # Em ambos os casos o código é testado, o AppImage é montado e testado
 # (--self-test), e só então a release é criada com o AppImage anexado.
 # Se algo falhar, nada é publicado.
+#
+# Segurança: o trabalho é dividido em três jobs com permissões mínimas.
+#   preparar  só lê (confere a versão);
+#   montar    só lê e roda SEM token: nenhum código baixado durante o build
+#             (dependências, ferramentas) tem acesso a credenciais do repositório;
+#   publicar  é o único com permissão de escrita e só cria a release com o
+#             AppImage já testado, sem baixar nem executar o código do projeto.
 
 on:
   push:
@@ -23,23 +30,23 @@ on:
         type: boolean
         default: false
 
-permissions:
-  contents: write
+# Padrão para todos os jobs: nenhuma permissão. Cada job pede só o que usa.
+permissions: {}
 
 concurrency:
   group: release-${{ inputs.version || github.ref_name }}
   cancel-in-progress: false
 
-env:
-  GH_TOKEN: ${{ github.token }}
-  GH_REPO: ${{ github.repository }}
-
 jobs:
-  appimage:
-    name: Testar, montar e publicar o AppImage
+  preparar:
+    name: Conferir a versão
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
-
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - name: Definir a versão
         id: version
@@ -58,28 +65,40 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
 
-      - name: Baixar o código
-        uses: actions/checkout@v7
-
       - name: Verificar se a versão já foi publicada
         env:
+          GH_TOKEN: ${{ github.token }}
           TAG: ${{ steps.version.outputs.tag }}
         run: |
-          if gh release view "$TAG" >/dev/null 2>&1; then
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "::error::A release $TAG já existe. Escolha outra versão."
             exit 1
           fi
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ] \
-             && git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null; then
+             && gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$TAG" >/dev/null 2>&1; then
             echo "::error::A tag $TAG já existe. Escolha outra versão ou publique pela tag."
             exit 1
           fi
+
+  montar:
+    name: Testar e montar o AppImage
+    needs: preparar
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+      - name: Baixar o código
+        uses: actions/checkout@v7
+        with:
+          # Não deixa o token gravado em .git/config, onde scripts do build o leriam.
+          persist-credentials: false
 
       - name: Instalar dependências do sistema
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential libasound2-dev libxcb-cursor0 \
+            build-essential git libasound2-dev libxcb-cursor0 \
             libegl1 libgl1 libxkbcommon-x11-0 libdbus-1-3 libfontconfig1 libsndfile1
 
       - name: Configurar Python
@@ -103,20 +122,49 @@ jobs:
         run: python -m pytest -q
 
       - name: Montar e testar o AppImage
-        run: bash packaging/build_appimage.sh "${{ steps.version.outputs.version }}"
+        env:
+          VERSION: ${{ needs.preparar.outputs.version }}
+        run: bash packaging/build_appimage.sh "$VERSION"
+
+      - name: Registrar o SHA-256 do AppImage
+        run: |
+          cd dist
+          sha256sum -- *.AppImage | tee SHA256SUMS.txt
 
       - name: Guardar o AppImage nos artefatos da execução
         uses: actions/upload-artifact@v7
         with:
-          name: Uninstrumephy-${{ steps.version.outputs.version }}-x86_64
-          path: dist/*.AppImage
+          name: Uninstrumephy-${{ needs.preparar.outputs.version }}-x86_64
+          path: |
+            dist/*.AppImage
+            dist/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14
 
-      - name: Publicar a release
+  publicar:
+    name: Publicar a release
+    needs: [preparar, montar]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - name: Receber o AppImage testado
+        uses: actions/download-artifact@v7
+        with:
+          name: Uninstrumephy-${{ needs.preparar.outputs.version }}-x86_64
+          path: dist
+
+      - name: Conferir o SHA-256 recebido
+        run: |
+          cd dist
+          sha256sum --check SHA256SUMS.txt
+
+      - name: Criar a release
         env:
-          TAG: ${{ steps.version.outputs.tag }}
-          VERSION: ${{ steps.version.outputs.version }}
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.preparar.outputs.tag }}
+          VERSION: ${{ needs.preparar.outputs.version }}
           PRERELEASE: ${{ inputs.prerelease }}
         run: |
           cat > notes.md <<'EOF'
@@ -126,6 +174,8 @@ jobs:
           2. Dê permissão de execução: `chmod +x Uninstrumephy-*.AppImage`
              (ou pelas propriedades do arquivo, no gerenciador de arquivos).
           3. Abra com um duplo clique ou `./Uninstrumephy-*.AppImage`.
+
+          Para conferir o download: `sha256sum -c SHA256SUMS.txt` na pasta dos dois arquivos.
 
           **Requisitos:** Linux x86_64 e o `ffmpeg` instalado, usado pelo Demucs para ler as músicas
           (veja como instalar na seção *Instalação* do README).
@@ -137,11 +187,12 @@ jobs:
           Seus dados (logs, gravações e presets) ficam em `~/.local/share/uninstrumephy`.
           EOF
           # --notes é colocado antes das notas geradas a partir dos commits/PRs.
-          args=(--title "Uninstrumephy $VERSION" --notes "$(cat notes.md)" --generate-notes)
+          args=(--repo "$GITHUB_REPOSITORY" --title "Uninstrumephy $VERSION"
+                --notes "$(cat notes.md)" --generate-notes)
           if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
             args+=(--target "$GITHUB_SHA")
           fi
           if [ "$PRERELEASE" = "true" ]; then
             args+=(--prerelease)
           fi
-          gh release create "$TAG" dist/*.AppImage "${args[@]}"
+          gh release create "$TAG" dist/*.AppImage dist/SHA256SUMS.txt "${args[@]}"
