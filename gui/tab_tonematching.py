@@ -137,7 +137,7 @@ class TabToneMatching(QWidget):
         # Resumo legível na interface contendo múltiplos dados calculados
         summary_text = (
             f"Faixa: '{self.last_analyzed_stem}' | "
-            f"Gate: {gate} dB | "
+            f"Gate sugerido: {gate} dB (não aplicado) | "
             f"EQ: [100Hz: {eq4.get('low_db', 0):+d}dB, 500Hz: {eq4.get('mid1_db', 0):+d}dB, "
             f"1.5kHz: {eq4.get('mid2_db', 0):+d}dB, 4.5kHz: {eq4.get('high_db', 0):+d}dB] | "
             f"Brilho (Tone): {overdrive.get('tone_pct', 50)}% ({centroid_hz:.0f} Hz) | "

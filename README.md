@@ -30,7 +30,7 @@ O software usa Inteligência Artificial para separar os instrumentos da faixa e 
 - **Carregamento de mídia:** extração automática de metadados e capa do álbum.
 - **Reprodutor de áudio independente:** dois motores de reprodução em memória (música original e faixas isoladas), cada um com controles próprios de tempo (*seek*) e volume.
 - **Separação de faixas por IA:** integração nativa com o modelo **Demucs v4 (`htdemucs_6s`)**, com aceleração por GPU NVIDIA (CUDA).
-- **Análise de sinais (MIR):** extração, via **Librosa**, da curva de equalização ideal (Bass, Mid, Treble) e do limiar do Noise Gate.
+- **Análise de sinais (MIR):** extração, via **Librosa**, da curva de equalização ideal (Bass, Mid, Treble), do brilho e da dinâmica, aplicados ao EQ, Overdrive e Compressor. O limiar do Noise Gate é calculado apenas como sugestão: o Gate nunca é alterado automaticamente.
 - **Controle da Placa A via CDC:** envio de parâmetros pelo protocolo v2 do firmware (COBS, CRC-8, sequência e confirmação), incluindo os efeitos novos.
 - **Escuta da pedaleira em tempo real:** o áudio mono processado capturado via UAC é encaminhado direto para fones ou caixas, sem passar pelo disco.
 

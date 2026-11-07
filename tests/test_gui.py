@@ -91,3 +91,25 @@ def test_erro_de_envio_mostra_uma_unica_caixa(qapp, monkeypatch):
     win = main.MainWindow()
     win.tab_hardware._on_send_error("A Placa A rejeitou o comando CDC (status 3).")
     assert len(shown) == 1 and "rejeitou" in shown[0]
+
+
+def test_tone_matching_nao_altera_o_noise_gate(qapp):
+    from gui.tab_hardware import TabHardware
+    tab = TabHardware()
+    gate, eq = tab.effect_widgets["gate"], tab.effect_widgets["eq"]
+    gate.set_active(False)
+    gate.set_param_value("gate_threshold", -30)
+    tab.set_params({
+        "noise_gate_threshold_db": -62.4,
+        "eq_4bands": {"low_db": 3, "mid1_db": -2, "mid2_db": 1, "high_db": 4},
+        "overdrive": {"tone_pct": 70, "drive_pct": 40, "suggested_active": True},
+        "compressor": {"threshold_pct": 35, "ratio": 4.0, "suggested_active": True},
+    })
+    # O Gate fica exatamente como o usuário deixou...
+    assert gate.is_active() is False
+    assert gate.get_param_value("gate_threshold") == -30
+    # ...e os demais efeitos continuam sendo ajustados.
+    assert eq.is_active() and eq.get_param_value("eq_high_gain") == 4
+    assert tab.effect_widgets["overdrive"].get_param_value("dist_tone") == 70
+    assert tab.effect_widgets["comp"].is_active()
+    assert "Noise Gate" not in tab.lbl_gate_source.text()

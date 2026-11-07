@@ -184,10 +184,14 @@ class TabHardware(QWidget):
     def set_params(self, params: dict) -> None:
         """
         Preenche múltiplos efeitos a partir dos dados extraídos pelo Tone Matching:
-          1. Noise Gate (Threshold dB)
-          2. Equalizador de 4 Bandas (Ganhos em 100Hz, 500Hz, 1.5kHz, 4.5kHz)
-          3. Overdrive (Tone ajustado ao Spectral Centroid e Drive sugerido)
-          4. Compressor (Threshold e Ratio sugeridos se houver faixa dinâmica ampla)
+          1. Equalizador de 4 Bandas (Ganhos em 100Hz, 500Hz, 1.5kHz, 4.5kHz)
+          2. Overdrive (Tone ajustado ao Spectral Centroid e Drive sugerido)
+          3. Compressor (Threshold e Ratio sugeridos se houver faixa dinâmica ampla)
+
+        O Noise Gate NÃO é alterado: o ruído de fundo da gravação analisada não
+        corresponde ao do instrumento de quem toca, então o threshold fica sempre
+        sob controle do usuário. A análise ainda calcula um valor sugerido
+        ("noise_gate_threshold_db"), exibido apenas como informação.
         """
         if not params:
             return
@@ -196,15 +200,7 @@ class TabHardware(QWidget):
         updated_modules = []
 
         try:
-            # 1. Noise Gate
-            gate_db = params.get("noise_gate_threshold_db")
-            gate_widget = self.effect_widgets.get("gate")
-            if gate_db is not None and gate_widget is not None:
-                gate_widget.set_param_value("gate_threshold", round(gate_db))
-                gate_widget.set_active(True)
-                updated_modules.append("Noise Gate")
-
-            # 2. Equalizador 4 Bandas
+            # 1. Equalizador 4 Bandas
             eq_4b = params.get("eq_4bands", {})
             eq_widget = self.effect_widgets.get("eq")
             if eq_4b and eq_widget is not None:
@@ -215,7 +211,7 @@ class TabHardware(QWidget):
                 eq_widget.set_active(True)
                 updated_modules.append("EQ (4 Bandas)")
 
-            # 3. Overdrive (Tone e Saturação)
+            # 2. Overdrive (Tone e Saturação)
             od_data = params.get("overdrive", {})
             od_widget = self.effect_widgets.get("overdrive")
             if od_data and od_widget is not None:
@@ -228,7 +224,7 @@ class TabHardware(QWidget):
                 else:
                     updated_modules.append("Overdrive (Tone)")
 
-            # 4. Compressor
+            # 3. Compressor
             comp_data = params.get("compressor", {})
             comp_widget = self.effect_widgets.get("comp")
             if comp_data and comp_widget is not None:
