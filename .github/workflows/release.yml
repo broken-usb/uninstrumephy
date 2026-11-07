@@ -95,11 +95,13 @@ jobs:
           persist-credentials: false
 
       - name: Instalar dependências do sistema
+        # libpulse0: o QtMultimedia do Qt 6.12 depende diretamente da libpulse.so.0;
+        # sem ela, nem os testes nem o autoteste do AppImage conseguem importar o programa.
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential git squashfs-tools desktop-file-utils libasound2-dev libxcb-cursor0 \
-            libegl1 libgl1 libxkbcommon-x11-0 libdbus-1-3 libfontconfig1 libsndfile1
+            libegl1 libgl1 libxkbcommon-x11-0 libdbus-1-3 libfontconfig1 libsndfile1 libpulse0
 
       - name: Configurar Python
         uses: actions/setup-python@v7
@@ -177,8 +179,9 @@ jobs:
 
           Para conferir o download: `sha256sum -c SHA256SUMS.txt` na pasta dos dois arquivos.
 
-          **Requisitos:** Linux x86_64 e o `ffmpeg` instalado, usado pelo Demucs para ler as músicas
-          (veja como instalar na seção *Instalação* do README).
+          **Requisitos:** Linux x86_64, o `ffmpeg` instalado (usado pelo Demucs para ler as músicas)
+          e a biblioteca do PulseAudio (`libpulse`), que já vem em qualquer desktop com som via
+          PipeWire ou PulseAudio. Veja como instalar na seção *Instalação* do README.
           Na primeira separação, o modelo do Demucs é baixado da internet (uma vez só).
 
           Esta versão usa o PyTorch para CPU. Para separar faixas pela GPU (NVIDIA/CUDA), rode o

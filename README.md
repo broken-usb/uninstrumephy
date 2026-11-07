@@ -54,7 +54,7 @@ chmod +x Uninstrumephy-*-x86_64.AppImage
 ./Uninstrumephy-*-x86_64.AppImage
 ```
 
-O único requisito externo é o **FFmpeg** (veja a tabela em [Instalação](#instalação)), usado pelo Demucs para ler as músicas. Na primeira separação, o modelo do Demucs é baixado da internet uma única vez.
+O único requisito externo é o **FFmpeg** (veja a tabela em [Instalação](#instalação)), usado pelo Demucs para ler as músicas. O AppImage também usa a biblioteca do PulseAudio (`libpulse`), que já vem instalada em qualquer desktop com som (PipeWire ou PulseAudio). Na primeira separação, o modelo do Demucs é baixado da internet uma única vez.
 
 O AppImage usa o PyTorch **só para CPU**, porque a versão com CUDA ultrapassaria o limite de 2 GB por arquivo das releases do GitHub. Para separar faixas pela GPU (NVIDIA), instale a partir do código-fonte, como abaixo.
 
