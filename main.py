@@ -565,6 +565,11 @@ class MainWindow(QDialog):
         self._set_status("Música carregada.")
 
     def _on_demucs_started(self) -> None:
+        # Solta o arquivo da faixa carregada no player: ao reprocessar a mesma
+        # música, o Demucs regrava esses .wav, e o Windows não deixa sobrescrever
+        # um arquivo que outro componente mantém aberto.
+        self.player_stem.stop()
+        self.player_stem.setSource(QUrl())
         self.btn_load.setEnabled(False)
         self.btn_record.setEnabled(False)
         self.progress_bar.setRange(0, 0)
