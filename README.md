@@ -4,7 +4,7 @@ Interface gráfica em Python (Qt6) para **Tone Matching** automatizado: casament
 
 O software usa Inteligência Artificial para separar os instrumentos da faixa e Processamento Digital de Sinais (DSP) para extrair os parâmetros ideais de emulação em hardware (como placas ESP32).
 
-> **Status:** projeto em desenvolvimento. Suporte oficial apenas ao Linux.
+> **Status:** projeto em desenvolvimento. Suporte oficial apenas ao **Linux**. O Windows funciona de forma **experimental** (veja [Windows (experimental)](#windows-experimental)).
 
 ## Sumário
 
@@ -12,6 +12,7 @@ O software usa Inteligência Artificial para separar os instrumentos da faixa e 
 - [Requisitos](#requisitos)
 - [AppImage (sem instalar o Python)](#appimage-sem-instalar-o-python)
 - [Instalação](#instalação)
+- [Windows (experimental)](#windows-experimental)
 - [Uso](#uso)
 - [Onde ficam os dados](#onde-ficam-os-dados)
 - [Integração com o hardware (Placa A)](#integração-com-o-hardware-placa-a)
@@ -31,12 +32,12 @@ O software usa Inteligência Artificial para separar os instrumentos da faixa e 
 - **Reprodutor de áudio independente:** dois motores de reprodução em memória (música original e faixas isoladas), cada um com controles próprios de tempo (*seek*) e volume.
 - **Separação de faixas por IA:** integração nativa com o modelo **Demucs v4 (`htdemucs_6s`)**, com aceleração por GPU NVIDIA (CUDA).
 - **Análise de sinais (MIR):** extração, via **Librosa**, da curva de equalização ideal (Bass, Mid, Treble), do brilho e da dinâmica, aplicados ao EQ, Overdrive e Compressor. O limiar do Noise Gate é calculado apenas como sugestão: o Gate nunca é alterado automaticamente.
-- **Controle da Placa A via CDC:** envio de parâmetros pelo protocolo v2 do firmware (COBS, CRC-8, sequência e confirmação), incluindo os efeitos novos.
+- **Controle da Placa A via CDC:** envio de parâmetros pelo protocolo v2 do firmware (COBS, CRC-8, sequência e confirmação), para todos os efeitos suportados pelo firmware.
 - **Escuta da pedaleira em tempo real:** o áudio mono processado capturado via UAC é encaminhado direto para fones ou caixas, sem passar pelo disco.
 
 ## Requisitos
 
-- Linux ou Windows 10/11 (64 bits)
+- Linux x86_64 (suporte oficial) ou Windows 10/11 64 bits ([experimental](#windows-experimental))
 - [uv](https://docs.astral.sh/uv/) 0.13.5 ou mais novo (ele instala o Python sozinho: mínimo 3.12, padrão 3.14)
 - FFmpeg
 - Dependências definidas em `pyproject.toml`, com as versões travadas em `uv.lock`
@@ -64,17 +65,24 @@ O projeto usa o [uv](https://docs.astral.sh/uv/) para instalar o Python e as dep
 
 1. **Instale o uv e o FFmpeg**
 
-   | Sistema | uv | FFmpeg |
+   Prefira os pacotes da sua distribuição: eles são atualizados junto com o resto do sistema.
+
+   | Distribuição | uv | FFmpeg |
    | --- | --- | --- |
-   | Linux (qualquer distribuição) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` | veja abaixo |
-   | Ubuntu/Debian | (instalador acima) | `sudo apt install ffmpeg` |
-   | Arch | (instalador acima) | `sudo pacman -S ffmpeg` |
-   | RHEL/Fedora | (instalador acima) | `sudo dnf swap ffmpeg-free ffmpeg --allowerasing` (requer RPM Fusion) |
-   | Windows 10/11 | `winget install --id=astral-sh.uv -e` | `winget install Gyan.FFmpeg` |
+   | Arch | `sudo pacman -S uv` | `sudo pacman -S ffmpeg` |
+   | Fedora 43 ou mais novo | `sudo dnf install uv` | `sudo dnf swap ffmpeg-free ffmpeg --allowerasing` (requer RPM Fusion) |
+   | Ubuntu/Debian | instalador oficial (veja abaixo) | `sudo apt install ffmpeg` |
+   | Outras distribuições | pacote `uv` da distribuição, se for 0.13.5 ou mais novo; senão, o instalador oficial | pacote `ffmpeg` da distribuição |
 
-   > O projeto exige o uv 0.13.5 ou mais novo. O instalador oficial sempre traz a versão atual e permite atualizar com `uv self update`; a versão do gerenciador de pacotes da distribuição pode ser antiga demais.
+   O projeto exige o **uv 0.13.5 ou mais novo**. Confira com `uv --version` depois de instalar. Se a versão da distribuição for mais antiga (o `uv sync` avisa: *Required uv version `>=0.13.5` does not match*), ou se ela não tiver o pacote, como o Ubuntu e o Debian, use o instalador oficial:
 
-   > No Windows, rode os comandos no Prompt de Comando ou no PowerShell e, depois de instalar, feche e abra o terminal para que `uv` e `ffmpeg` sejam encontrados.
+   ```bash
+   curl -LsSf https://astral.sh/uv/install.sh | sh
+   ```
+
+   > O uv instalado pelo gerenciador de pacotes é atualizado por ele (`sudo dnf upgrade`, `sudo pacman -Syu`...). O comando `uv self update` só funciona no uv do instalador oficial.
+
+   No Windows (experimental), use o `winget`: `winget install --id=astral-sh.uv -e` e `winget install Gyan.FFmpeg`. Veja [Windows (experimental)](#windows-experimental).
 
 2. **Clone o repositório**
 
@@ -98,7 +106,34 @@ O projeto usa o [uv](https://docs.astral.sh/uv/) para instalar o Python e as dep
 
    Nesse caso, rode os comandos com `uv run --no-sync` (ex.: `uv run --no-sync main.py`). Sem o `--no-sync`, o `uv run` sincroniza o ambiente com o `uv.lock` e reinstalaria o PyTorch com CUDA.
 
-   No Windows, o PyTorch instalado pelo `uv sync` já é a versão para CPU.
+## Windows (experimental)
+
+O Windows 10/11 (64 bits) pode rodar o programa a partir do código-fonte, mas o suporte é **experimental**: o desenvolvimento e os testes com a Placa A são feitos no Linux, que é a única plataforma com suporte oficial. Problemas no Windows podem ser relatados em [Issues](https://github.com/broken-usb/uninstrumephy/issues), mas não têm garantia de correção.
+
+**Diferenças em relação ao Linux**
+
+- **Áudio:** o programa usa o WASAPI, o sistema de áudio do Windows. Cada dispositivo aparece uma vez só, e o Windows converte a taxa de amostragem automaticamente quando os fones estão em 48 kHz.
+- **Pastas:** rodando de uma pasta sem permissão de escrita (ex.: `C:\Program Files`), os dados vão para `%LOCALAPPDATA%\uninstrumephy`.
+- **Porta serial:** a Placa A aparece como `COM3`, `COM4`... e é encontrada automaticamente.
+- **Testes:** o CI também roda os testes automáticos no Windows, mas sem placa de som nem a Placa A conectada.
+
+**Instalação**
+
+1. No Prompt de Comando ou no PowerShell:
+
+   ```bat
+   winget install --id=astral-sh.uv -e
+   winget install Gyan.FFmpeg
+   ```
+
+2. Feche e abra o terminal, para que `uv` e `ffmpeg` sejam encontrados.
+3. Siga os passos 2 e 3 da [Instalação](#instalação) (clonar e `uv sync`) e abra com `uv run main.py`. No Windows, o PyTorch instalado pelo `uv sync` já é a versão para CPU.
+
+**Limitações conhecidas**
+
+- Não há AppImage nem instalador para Windows: só a execução pelo código-fonte.
+- O áudio em tempo real com a Placa A (monitor ao vivo e reconexão após uma alteração via CDC) não foi validado em hardware no Windows.
+- Aberto sem console (`pythonw`), cada separação pode mostrar rapidamente janelas pretas do FFmpeg. Abrindo por `uv run main.py` num terminal, isso não acontece.
 
 ## Uso
 
@@ -121,7 +156,7 @@ Para adicionar ou atualizar uma dependência, use `uv add <pacote>` ou `uv lock 
 | --- | --- | --- |
 | Código-fonte | `output/` na pasta do projeto | `presets/` na pasta do projeto |
 | AppImage | `~/.local/share/uninstrumephy/` | `~/.local/share/uninstrumephy/presets/` (criada na primeira execução com os presets de demonstração) |
-| Pasta sem permissão de escrita (ex.: `C:\Program Files`) | Linux: `~/.local/share/uninstrumephy/`; Windows: `%LOCALAPPDATA%\uninstrumephy\` | `presets\` dentro dessa pasta (criada com os presets de demonstração) |
+| Pasta sem permissão de escrita (ex.: `C:\Program Files`) | Linux: `~/.local/share/uninstrumephy/`; Windows (experimental): `%LOCALAPPDATA%\uninstrumephy\` | `presets\` dentro dessa pasta (criada com os presets de demonstração) |
 
 A variável de ambiente `UNINSTRUMEPHY_DATA_DIR` substitui essa pasta em todos os casos. O log da sessão atual fica em `logs/latest-log.txt`, e o da anterior em `logs/previous-log.txt`.
 
@@ -148,9 +183,6 @@ Cada quadro segue o formato abaixo:
 A aplicação reenvia comandos sem resposta, e o firmware deduplica a última mutação por sequência/CRC.
 
 O *cab sim* (efeito 8) só é enviado quando o `effect_mask` de `CAPS` anuncia `EFFECT_CAP_CAB_SIM`. Assim, o mesmo cliente funciona tanto com o perfil padrão (`ENABLE_CAB_SIM=0`) quanto com o ambiente `*-cab`.
-
-> O simulador antigo, que enviava um bloco COBS de 140 bytes, não é usado em hardware.
-
 ### Presets de demonstração
 
 O diretório `presets/` traz quatro presets JSON, listados na aba **Hardware**:
@@ -191,21 +223,23 @@ Detalhes importantes:
 | --- | --- |
 | Saída não aceita 44,1 kHz mono | O diálogo informa o erro. Escolha outra saída ou ajuste o dispositivo no sistema operacional. |
 | Entrada genérica de 48 kHz selecionada | Ela não substitui a UAC de 44,1 kHz. Escolha `ESP32-S3 Processed Audio`. |
-| `Device unavailable` | Outra captura pode estar usando a interface em modo exclusivo. Linux: pare o gravador anterior (ou `arecord`). Windows: feche programas como Discord ou OBS e, em *Configurações de som → Mais configurações de som → (dispositivo) → Propriedades → Avançado*, desmarque "Permitir que aplicativos tenham controle exclusivo". Depois aguarde a UAC liberar o dispositivo e inicie o monitor novamente. |
-| `PortAudio library not found` | Linux: instale a PortAudio (Fedora: `sudo dnf install portaudio`; Ubuntu/Debian: `sudo apt install libportaudio2`); o AppImage já traz uma cópia de reserva. Windows: a PortAudio vem com o `sounddevice`; reinstale com `uv sync --reinstall-package sounddevice`. |
-| Dispositivos no Windows | O programa usa o sistema de áudio WASAPI, então cada dispositivo aparece uma vez só. Se a placa foi conectada com o programa aberto e não aparece, use **Atualizar**. |
+| `Device unavailable` | Outra captura pode estar usando a interface em modo exclusivo. Linux: pare o gravador anterior (ou `arecord`). Windows (experimental): feche programas como Discord ou OBS e, em *Configurações de som → Mais configurações de som → (dispositivo) → Propriedades → Avançado*, desmarque "Permitir que aplicativos tenham controle exclusivo". Depois aguarde a UAC liberar o dispositivo e inicie o monitor novamente. |
+| `PortAudio library not found` | Linux: instale a PortAudio (Fedora: `sudo dnf install portaudio`; Ubuntu/Debian: `sudo apt install libportaudio2`); o AppImage já traz uma cópia de reserva. Windows (experimental): a PortAudio vem com o `sounddevice`; reinstale com `uv sync --reinstall-package sounddevice`. |
+| Dispositivos no Windows (experimental) | O programa usa o sistema de áudio WASAPI, então cada dispositivo aparece uma vez só. Se a placa foi conectada com o programa aberto e não aparece, use **Atualizar**. |
 | Avisos de `input/output underflow/overflow` | O host está perdendo blocos. Reduza a carga do computador ou aumente o buffer da DAW para 128 amostras. |
 
 ## Estrutura do repositório
 
 ```text
 .
-├── .github/workflows/ # CI (testes) e release (AppImage)
+├── .github/workflows/ # CI (testes no Linux e no Windows) e release (AppImage)
 ├── core/              # Lógica principal (separação, análise, protocolo)
 ├── gui/               # Interface Qt6 (.ui do Qt Designer + código)
-├── packaging/         # Montagem do AppImage
+├── packaging/         # Montagem do AppImage e instalação só para CPU
 ├── presets/           # Presets JSON de demonstração
 ├── tests/             # Testes (pytest)
+├── .flake8            # Configuração do lint (ignora .venv/ e pastas geradas)
+├── .python-version    # Versão padrão do Python usada pelo uv
 ├── main.py            # Ponto de entrada
 ├── pyproject.toml     # Dependências do projeto
 └── uv.lock            # Versões travadas das dependências
@@ -217,6 +251,7 @@ A interface é definida pelos arquivos `.ui` em `gui/`, carregados em tempo de e
 
 ```bash
 uv run pytest
+uv run flake8 . --select=E9,F63,F7,F82   # erros de lint que bloqueiam o CI
 ```
 
 Os testes não precisam da pedaleira nem de placa de som (ambas são simuladas) e gravam seus dados numa pasta temporária, nunca em `output/`.
