@@ -329,25 +329,29 @@ class ESP32Link:
             return
 
         try:
-            self._conn = serial.Serial(
-                self.port,
-                self.BAUDRATE,
-                timeout=self.TIMEOUT_S,
-                write_timeout=self.TIMEOUT_S,
-            )
             # A CDC nativa do ESP32-S3 não usa DTR/RTS para reset. Mantê-los
             # baixos evita que abrir a porta de controle provoque uma
             # reconexão USB da UAC em hosts que alternam essas linhas.
-            try:
-                self._conn.dtr = False
-                self._conn.rts = False
-            except serial.SerialException:
-                logger.debug("Não foi possível ajustar DTR/RTS da CDC", exc_info=True)
+            # Eles são definidos ANTES de abrir: o pyserial os aplica já na
+            # abertura. Ajustá-los depois deixaria um pulso de DTR no Windows,
+            # que liga a linha por padrão ao abrir a porta.
+            conn = serial.Serial(timeout=self.TIMEOUT_S, write_timeout=self.TIMEOUT_S)
+            conn.port = self.port
+            conn.baudrate = self.BAUDRATE
+            conn.dtr = False
+            conn.rts = False
+            conn.open()
+            self._conn = conn
             time.sleep(self.BOOT_DELAY_S)
             self._conn.reset_input_buffer()
             logger.info(f"Conectado à ESP32-S3 na porta {self.port}")
         except serial.SerialException as exc:
-            raise HardwareLinkError(f"Falha ao abrir {self.port}: {exc}") from exc
+            hint = ""
+            if isinstance(exc.__context__, PermissionError) or "denied" in str(exc).lower() \
+                    or "negado" in str(exc).lower():
+                hint = (" A porta parece estar em uso por outro programa (ex.: monitor serial "
+                        "da IDE do Arduino/ESP-IDF); feche-o e tente de novo.")
+            raise HardwareLinkError(f"Falha ao abrir {self.port}: {exc}.{hint}") from exc
 
     def send_state(
         self,

@@ -160,8 +160,9 @@ class RecordDialog(QDialog):
             self.monitor_thread is not None and self.monitor_thread.isRunning()
         ):
             return
-        # Leitura barata de /proc/asound/cards; o PortAudio só é reiniciado
-        # (operação cara) quando uma placa foi conectada ou removida.
+        # Verificação barata (Linux: /proc/asound/cards; Windows: lista de
+        # dispositivos do Qt); o PortAudio só é reiniciado (operação cara)
+        # quando uma placa foi conectada ou removida.
         refresh_devices(force=False)
         devices = list_input_devices()
         outputs = list_output_devices()

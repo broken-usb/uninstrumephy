@@ -323,7 +323,11 @@ class AudioSeparator:
         hash_input = f"{hash_input}_shifts{self.shifts}_overlap{self.overlap:.2f}"
 
         digest = hashlib.sha1(hash_input.encode("utf-8")).hexdigest()[:10]
-        safe_name = f"{audio_path.stem}_{digest}"
+        # Nome encurtado: títulos longos (comuns em músicas baixadas da
+        # internet) somados ao caminho do projeto podem passar do limite de
+        # 260 caracteres de caminho do Windows. O hash continua identificando
+        # o arquivo; nomes de até 60 caracteres ficam iguais aos de antes.
+        safe_name = f"{audio_path.stem[:60]}_{digest}"
         return self.output_dir / self.model_name / safe_name
 
     @staticmethod

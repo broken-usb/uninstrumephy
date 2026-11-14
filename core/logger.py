@@ -29,11 +29,6 @@ def setup_logging(log_dir: str | Path | None = None) -> logging.Logger:
     log_format = "%(asctime)s [%(levelname)s] %(name)s -> %(message)s"
     formatter = logging.Formatter(log_format)
 
-    # Handler do Terminal (Console)
-    console_handler = logging.StreamHandler(sys.stdout)
-    console_handler.setLevel(logging.INFO)
-    console_handler.setFormatter(formatter)
-
     # Handler do Arquivo (latest-log.txt com detalhes em nível DEBUG)
     file_handler = logging.FileHandler(latest_log, mode="w", encoding="utf-8")
     file_handler.setLevel(logging.DEBUG)
@@ -45,7 +40,20 @@ def setup_logging(log_dir: str | Path | None = None) -> logging.Logger:
 
     # Limpa handlers anteriores para evitar mensagens duplicadas
     root_logger.handlers.clear()
-    root_logger.addHandler(console_handler)
     root_logger.addHandler(file_handler)
+
+    # Handler do Terminal (Console). Aberto sem console (pythonw.exe no
+    # Windows), sys.stdout é None: o log continua só no arquivo.
+    if sys.stdout is not None:
+        # O console do Windows usa outra codificação (ex.: cp1252); sem isto,
+        # mensagens com caracteres fora dela geram erros de logging.
+        try:
+            sys.stdout.reconfigure(errors="replace")
+        except (AttributeError, ValueError):
+            pass
+        console_handler = logging.StreamHandler(sys.stdout)
+        console_handler.setLevel(logging.INFO)
+        console_handler.setFormatter(formatter)
+        root_logger.addHandler(console_handler)
 
     return root_logger

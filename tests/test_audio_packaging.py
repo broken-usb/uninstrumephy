@@ -1,6 +1,7 @@
 """Partes do áudio que dependem do ambiente (AppImage, bibliotecas do sistema)."""
 
 import ctypes.util
+import sys
 
 import pytest
 
@@ -39,12 +40,14 @@ def test_sem_appimage_nada_muda(reset_fallback, monkeypatch):
     assert ctypes.util.find_library is original
 
 
-def test_mensagem_quando_a_portaudio_falta():
+def test_mensagem_quando_a_portaudio_falta(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "linux")
     msg = audio_recorder._sounddevice_error_message(OSError("PortAudio library not found"))
     assert "PortAudio" in msg and "dnf install portaudio" in msg
 
 
-def test_mensagem_quando_o_ffmpeg_falta():
+def test_mensagem_quando_o_ffmpeg_falta(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "linux")
     from gui.errors import describe_error
     tb = ("Traceback (most recent call last):\n"
           "FileNotFoundError: [Errno 2] No such file or directory: 'ffprobe'")

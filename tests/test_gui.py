@@ -32,7 +32,9 @@ def test_icones_do_tema_em_pasta_propria_da_execucao(qapp):
     folder = theme._icon_cache_dir()
     assert folder == theme._icon_cache_dir()  # a mesma durante toda a execução
     assert folder != Path(tempfile.gettempdir()) / "uninstrumephy_theme"
-    assert folder.stat().st_uid == os.getuid() and any(folder.rglob("*.svg"))
+    assert any(folder.rglob("*.svg"))
+    if hasattr(os, "getuid"):  # dono da pasta: só existe no Linux/macOS
+        assert folder.stat().st_uid == os.getuid()
 
 
 def test_ui_em_classe_errada_da_erro_claro(qapp):

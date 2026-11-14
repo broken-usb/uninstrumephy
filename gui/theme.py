@@ -283,8 +283,8 @@ QSpinBox::down-button, QDoubleSpinBox::down-button {{
 }}
 QSpinBox::up-button:hover, QSpinBox::down-button:hover,
 QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {{ background: {t.hover}; }}
-QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{ image: url({ic['up_s']}); width: 10px; height: 10px; }}
-QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{ image: url({ic['down_s']}); width: 10px; height: 10px; }}
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{ image: url("{ic['up_s']}"); width: 10px; height: 10px; }}
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{ image: url("{ic['down_s']}"); width: 10px; height: 10px; }}
 QLineEdit:focus, QSpinBox:focus, QDoubleSpinBox:focus,
 QPlainTextEdit:focus, QTextEdit:focus {{ border: 2px solid {t.accent}; }}
 
@@ -296,8 +296,8 @@ QComboBox {{
 QComboBox:hover {{ background: {t.chrome}; }}
 QComboBox:focus {{ border: 2px solid {t.accent}; padding: 4px 9px; }}
 QComboBox::drop-down {{ border: none; width: 26px; subcontrol-origin: padding; subcontrol-position: center right; }}
-QComboBox::down-arrow {{ image: url({ic['down']}); width: 14px; height: 14px; }}
-QComboBox::down-arrow:disabled {{ image: url({ic['down_dis']}); }}
+QComboBox::down-arrow {{ image: url("{ic['down']}"); width: 14px; height: 14px; }}
+QComboBox::down-arrow:disabled {{ image: url("{ic['down_dis']}"); }}
 QComboBox QAbstractItemView {{
     background: {t.surface}; color: {t.text};
     border: 1px solid {t.border}; border-radius: {RADIUS}px; padding: 4px;
@@ -315,8 +315,8 @@ QRadioButton::indicator {{ border-radius: 9px; }}
 QCheckBox::indicator:checked, QRadioButton::indicator:checked {{
     background: {t.accent}; border-color: {t.accent};
 }}
-QCheckBox::indicator:checked   {{ image: url({ic['check']}); }}
-QRadioButton::indicator:checked {{ image: url({ic['dot']}); }}
+QCheckBox::indicator:checked   {{ image: url("{ic['check']}"); }}
+QRadioButton::indicator:checked {{ image: url("{ic['dot']}"); }}
 QCheckBox::indicator:focus, QRadioButton::indicator:focus {{ border: 2px solid {t.accent}; }}
 
 /* ---------- controles deslizantes ---------- */
