@@ -91,7 +91,7 @@ def describe_error(error: str | BaseException) -> ErrorInfo:
         name = module.group(1).split(".")[0] if module else None
         return ErrorInfo(
             f"Uma biblioteca necessária não está instalada{f' ({name})' if name else ''}.",
-            "Reinstale as dependências com: pip install -r requirements.txt",
+            "Reinstale as dependências com: uv sync",
             details,
         )
     if exc_type in ("MemoryError", "OutOfMemoryError") or "out of memory" in lowered:

@@ -60,10 +60,10 @@ def _import_sounddevice():
 def _sounddevice_error_message(exc: BaseException) -> str:
     if isinstance(exc, ImportError):
         return ("A biblioteca 'sounddevice' não foi encontrada. "
-                "Instale as dependências com: pip install -r requirements.txt")
+                "Instale as dependências com: uv sync")
     if sys.platform == "win32":
         return ("A biblioteca de áudio PortAudio não pôde ser carregada. Reinstale as "
-                "dependências com: pip install --force-reinstall sounddevice "
+                "dependências com: uv sync --reinstall-package sounddevice. "
                 f"Detalhe: {exc}")
     return ("A biblioteca de áudio PortAudio não foi encontrada no sistema. "
             "Instale-a (Fedora: sudo dnf install portaudio; "

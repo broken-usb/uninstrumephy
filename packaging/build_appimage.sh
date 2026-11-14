@@ -6,7 +6,7 @@
 # Gera dist/Uninstrumephy-<versão>-x86_64.AppImage e o testa com --self-test.
 # É o mesmo script usado pelo GitHub Actions (.github/workflows/release.yml).
 #
-# Precisa de: curl, git, gcc, make, sha256sum, mksquashfs (squashfs-tools),
+# Precisa de: uv, curl, git, gcc, make, sha256sum, mksquashfs (squashfs-tools),
 # os cabeçalhos da ALSA (para compilar a PortAudio) e a libxcb-cursor
 # (embutida para o Qt abrir em X11):
 #   Ubuntu/Debian: sudo apt install build-essential git squashfs-tools libasound2-dev libxcb-cursor0 curl
@@ -19,7 +19,6 @@
 #   RUNTIME_FILE     runtime do AppImage (type2-runtime) já baixado
 #   PORTAUDIO_LIB    libportaudio.so.2 já compilada (com suporte a ALSA)
 #   XCB_CURSOR_LIB   libxcb-cursor.so.0 a embutir (padrão: a do sistema)
-#   TORCH_INDEX_URL  índice do PyTorch (padrão: versão só para CPU)
 
 set -euo pipefail
 
@@ -59,7 +58,6 @@ if [[ -n "${BASE_APPIMAGE:-}" ]]; then
 else
     PYTHON_VERSION="$PYTHON_APPIMAGE_VERSION"
 fi
-TORCH_INDEX_URL="${TORCH_INDEX_URL:-https://download.pytorch.org/whl/cpu}"
 ARCH="x86_64"
 MAX_ASSET_BYTES=$((2 * 1024 * 1024 * 1024))   # limite do GitHub por arquivo de release
 
@@ -70,8 +68,8 @@ DIST="$ROOT/dist"
 OUTPUT="$DIST/Uninstrumephy-$VERSION-$ARCH.AppImage"
 APP="$APPDIR/opt/uninstrumephy"
 
-# Sem isto, o pip veria os pacotes do usuário (~/.local) como já instalados
-# e não os copiaria para dentro do AppImage.
+# Sem isto, o Python embutido enxergaria os pacotes do usuário (~/.local), e
+# o uv os consideraria já instalados, sem copiá-los para dentro do AppImage.
 export PYTHONNOUSERSITE=1
 unset PYTHONPATH PYTHONHOME
 
@@ -113,11 +111,13 @@ PYTHON=("$APPDIR/AppRun")                          # AppRun original: o Python e
 SITE="$("${PYTHON[@]}" -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
 [[ "$SITE" == "$APPDIR"/* ]] || die "o site-packages ($SITE) não está dentro do AppDir"
 
-step "2/8 Dependências Python (PyTorch só para CPU)"
-"${PYTHON[@]}" -m pip install --no-cache-dir --upgrade pip
-"${PYTHON[@]}" -m pip install --no-cache-dir --index-url "$TORCH_INDEX_URL" torch torchaudio
-"${PYTHON[@]}" -m pip install --no-cache-dir -r "$ROOT/requirements.txt"
-# Uma dependência pode puxar o PyTorch com CUDA do PyPI (vários GB):
+step "2/8 Dependências Python (uv.lock, PyTorch só para CPU)"
+# As versões travadas no uv.lock, instaladas pelo uv direto no Python embutido
+# (o executável real, sem o wrapper do python-appimage).
+EMBEDDED_PYTHON="$APPDIR/opt/python$PYTHON_VERSION/bin/python$PYTHON_VERSION"
+[[ -x "$EMBEDDED_PYTHON" ]] || die "estrutura inesperada do python-appimage: falta $EMBEDDED_PYTHON"
+bash "$ROOT/packaging/install_cpu_deps.sh" "$EMBEDDED_PYTHON" --no-dev
+# Garantia extra: o PyTorch com CUDA (vários GB) não pode entrar no AppImage.
 "${PYTHON[@]}" -c 'import sys, torch; sys.exit(torch.version.cuda is not None)' \
     || die "o PyTorch instalado é a versão com CUDA; o AppImage passaria do limite de 2 GB"
 rm -rf "$SITE/torch/include" "$SITE/torch/share/cmake"   # cabeçalhos C++, só para compilar extensões
@@ -125,7 +125,7 @@ rm -rf "$SITE/torch/include" "$SITE/torch/share/cmake"   # cabeçalhos C++, só 
 step "3/8 Código do Uninstrumephy"
 mkdir -p "$APP/lib"
 cp -r "$ROOT/main.py" "$ROOT/core" "$ROOT/gui" "$ROOT/presets" \
-      "$ROOT/requirements.txt" "$ROOT/COPYING" "$ROOT/README.md" "$APP/"
+      "$ROOT/pyproject.toml" "$ROOT/uv.lock" "$ROOT/COPYING" "$ROOT/README.md" "$APP/"
 find "$APP" -name __pycache__ -type d -prune -exec rm -rf {} +
 "${PYTHON[@]}" -m compileall -q "$APP"   # o AppImage é somente leitura em uso
 

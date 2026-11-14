@@ -34,36 +34,33 @@ jobs:
             libsndfile1 \
             libpulse0
 
-      - name: Configurar Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v7
+      - name: Instalar uv e Python ${{ matrix.python-version }}
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
-          cache: 'pip'
+          activate-environment: true
+          enable-cache: true
 
-      - name: Instalar PyTorch (CPU) e Dependências
-        run: |
-          python -m pip install --upgrade pip
-          # Instala versão CPU do torch/torchaudio antes para evitar download do CUDA
-          pip install torch torchaudio --index-url https://download.pytorch.org/whl/cpu
-          pip install -r requirements.txt
-          pip install pytest flake8
+      - name: Instalar dependências do uv.lock (PyTorch só CPU)
+        # O uv sync traria o PyTorch com CUDA (~3 GB); os testes só precisam do de CPU.
+        run: bash packaging/install_cpu_deps.sh .venv/bin/python
 
       - name: Análise Estática (Lint)
         run: |
           # Interrompe em erros de sintaxe ou nomes não definidos
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          uv run --no-sync flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
           # Avisos gerais
-          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+          uv run --no-sync flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
 
       - name: Executar Testes com Display Virtual
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          xvfb-run -a python -m pytest -v
+          xvfb-run -a uv run --no-sync pytest -v
 
   test-windows:
     # Os mesmos testes num Windows de verdade (interface sem janela, sem placa
-    # de som). No Windows, o PyTorch do PyPI já é a versão para CPU.
+    # de som). No Windows, o PyTorch do uv.lock (PyPI) já é a versão para CPU.
     runs-on: windows-latest
     strategy:
       fail-fast: false
@@ -74,19 +71,16 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Configurar Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v7
+      - name: Instalar uv e Python ${{ matrix.python-version }}
+        uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
-          cache: 'pip'
+          enable-cache: true
 
-      - name: Instalar Dependências
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest
+      - name: Instalar dependências do uv.lock
+        run: uv sync --locked
 
       - name: Executar Testes
         env:
           QT_QPA_PLATFORM: offscreen
-        run: python -m pytest -v
+        run: uv run --no-sync pytest -v

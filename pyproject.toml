@@ -1,14 +1,15 @@
 [project]
 name = "uninstrumephy"
 version = "0.1.0"
-description = "Add your description here"
+description = "Separação de guitarra (Demucs), Tone Matching e controle da pedaleira ESP32-S3."
 readme = "README.md"
 authors = [
     { name = "broken-usb", email = "50057556+broken-usb@users.noreply.github.com" }
 ]
-requires-python = ">=3.14"
+# 3.12 é o mínimo testado no CI e a versão do Python embutida no AppImage.
+requires-python = ">=3.12"
 dependencies = [
-    "demucs>=4.0.1",
+    "demucs>=4.1.0",
     "librosa>=1.0.1",
     "matplotlib>=3.11.2",
     "numpy>=2.5.4",
@@ -23,9 +24,22 @@ dependencies = [
     "tqdm>=4.70.1",
 ]
 
-[project.scripts]
-uninstrumephy = "uninstrumephy:main"
+# Ferramentas de desenvolvimento: o `uv sync` as instala por padrão.
+[dependency-groups]
+dev = [
+    "flake8>=7.3.0",
+    "pytest>=9.0.0",
+]
 
-[build-system]
-requires = ["uv_build>=0.13.5,<0.14.0"]
-build-backend = "uv_build"
+[tool.uv]
+# Versão mínima do uv que lê este uv.lock (também usada pelo CI).
+required-version = ">=0.13.5"
+# O programa roda direto da pasta do projeto (`uv run main.py`); não há
+# pacote Python a construir e instalar.
+package = false
+# Sistemas suportados. Sem isto, o uv resolveria o lock também para o macOS,
+# onde o demucs 4.1 exige numpy < 2 (incompatível com numpy >= 2.5).
+environments = [
+    "sys_platform == 'linux'",
+    "sys_platform == 'win32'",
+]

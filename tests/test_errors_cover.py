@@ -15,7 +15,7 @@ def _traceback_of(exc: BaseException) -> str:
 
 
 @pytest.mark.parametrize("error, summary, hint", [
-    (_traceback_of(ModuleNotFoundError("No module named 'torch'", name="torch")), "biblioteca", "pip install"),
+    (_traceback_of(ModuleNotFoundError("No module named 'torch'", name="torch")), "biblioteca", "uv sync"),
     (_traceback_of(MemoryError()), "Memória insuficiente", "Feche"),
     ("Traceback (most recent call last):\ntorch.OutOfMemoryError: CUDA out of memory.", "Memória insuficiente", None),
     (_traceback_of(FileNotFoundError(2, "No such file or directory", "/x/musica.mp3")), "/x/musica.mp3", "movido"),

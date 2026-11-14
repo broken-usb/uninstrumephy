@@ -37,9 +37,9 @@ O software usa Inteligência Artificial para separar os instrumentos da faixa e 
 ## Requisitos
 
 - Linux ou Windows 10/11 (64 bits)
-- Python **3.12 ou superior** (recomendado: **3.14+**)
+- [uv](https://docs.astral.sh/uv/) 0.13.5 ou mais novo (ele instala o Python sozinho: mínimo 3.12, padrão 3.14)
 - FFmpeg
-- Conjunto completo de dependências do `requirements.txt`
+- Dependências definidas em `pyproject.toml`, com as versões travadas em `uv.lock`
 
 O Demucs (Torch) é obrigatório, pois a separação de guitarra faz parte do fluxo principal. Sem ele, o programa interrompe a inicialização em vez de ocultar a funcionalidade.
 
@@ -60,18 +60,21 @@ O AppImage usa o PyTorch **só para CPU**, porque a versão com CUDA ultrapassar
 
 ## Instalação
 
-1. **Instale o Python (mínimo 3.12, recomendado 3.14+) e o FFmpeg**
+O projeto usa o [uv](https://docs.astral.sh/uv/) para instalar o Python e as dependências. Não é preciso instalar o Python antes nem criar ou ativar um ambiente virtual: o uv faz isso sozinho.
 
-   | Distribuição | Python | FFmpeg |
+1. **Instale o uv e o FFmpeg**
+
+   | Sistema | uv | FFmpeg |
    | --- | --- | --- |
-   | Ubuntu/Debian | `sudo apt update && sudo apt install python3-full` | `sudo apt install ffmpeg` |
-   | Arch | `sudo pacman -S python` | `sudo pacman -S ffmpeg` |
-   | RHEL/Fedora | `sudo dnf install python` | `sudo dnf swap ffmpeg-free ffmpeg --allowerasing` (requer RPM Fusion) |
-   | Windows 10/11 | `winget install Python.Python.3.14` | `winget install Gyan.FFmpeg` |
+   | Linux (qualquer distribuição) | `curl -LsSf https://astral.sh/uv/install.sh \| sh` | veja abaixo |
+   | Ubuntu/Debian | (instalador acima) | `sudo apt install ffmpeg` |
+   | Arch | (instalador acima) | `sudo pacman -S ffmpeg` |
+   | RHEL/Fedora | (instalador acima) | `sudo dnf swap ffmpeg-free ffmpeg --allowerasing` (requer RPM Fusion) |
+   | Windows 10/11 | `winget install --id=astral-sh.uv -e` | `winget install Gyan.FFmpeg` |
 
-   > No Windows, rode os comandos no Prompt de Comando ou no PowerShell e, depois de instalar, feche e abra o terminal para que `python` e `ffmpeg` sejam encontrados.
+   > O projeto exige o uv 0.13.5 ou mais novo. O instalador oficial sempre traz a versão atual e permite atualizar com `uv self update`; a versão do gerenciador de pacotes da distribuição pode ser antiga demais.
 
-   > Verifique a versão com `python3 --version` (no Windows, `python --version`). A versão mínima é a 3.12, mas recomendamos a 3.14 ou superior. Se o repositório da sua distribuição não oferece a versão desejada, instale-a por outro meio (por exemplo, `uv python install 3.14`).
+   > No Windows, rode os comandos no Prompt de Comando ou no PowerShell e, depois de instalar, feche e abra o terminal para que `uv` e `ffmpeg` sejam encontrados.
 
 2. **Clone o repositório**
 
@@ -80,51 +83,24 @@ O AppImage usa o PyTorch **só para CPU**, porque a versão com CUDA ultrapassar
    cd uninstrumephy
    ```
 
-3. **Crie e ative o ambiente virtual**
+3. **Instale as dependências**
 
    ```bash
-   python -m venv .venv
-   source .venv/bin/activate
+   uv sync
    ```
 
-   No Windows:
-
-   ```bat
-   python -m venv .venv
-   .venv\Scripts\activate
-   ```
-
-   > Se o PowerShell recusar o `activate` por política de execução, use o Prompt de Comando ou rode uma vez `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
-
-4. **Instale as dependências**
+   Isso cria o ambiente em `.venv` (baixando o Python 3.14, se preciso) e instala exatamente as versões do `uv.lock`. No Linux, o PyTorch vem com suporte a GPU NVIDIA (CUDA), o que soma cerca de 3 GB. Sem GPU NVIDIA, dá para instalar só a versão para CPU, bem menor:
 
    ```bash
-   pip install --upgrade pip
-   pip install -r requirements.txt
+   uv venv
+   bash packaging/install_cpu_deps.sh .venv/bin/python
    ```
 
-   Alternativa com [uv](https://docs.astral.sh/uv/):
+   Nesse caso, rode os comandos com `uv run --no-sync` (ex.: `uv run --no-sync main.py`). Sem o `--no-sync`, o `uv run` sincroniza o ambiente com o `uv.lock` e reinstalaria o PyTorch com CUDA.
 
-   ```bash
-   uv venv --python 3.14
-   uv pip install -r requirements.txt
-   ```
-
-   Se você já tem um ambiente virtual em `../.venv`, é possível reaproveitá-lo:
-
-   ```bash
-   uv pip install --python ../.venv/bin/python -r requirements.txt
-   ```
+   No Windows, o PyTorch instalado pelo `uv sync` já é a versão para CPU.
 
 ## Uso
-
-Com o ambiente virtual ativo:
-
-```bash
-python main.py
-```
-
-Com `uv`:
 
 ```bash
 uv run main.py
@@ -134,8 +110,10 @@ Para conferir se tudo está funcionando (PyTorch, Demucs, certificados HTTPS, an
 
 ```bash
 ./Uninstrumephy-*-x86_64.AppImage --self-test   # pelo AppImage
-python main.py --self-test                      # pelo código-fonte
+uv run main.py --self-test                      # pelo código-fonte
 ```
+
+Para adicionar ou atualizar uma dependência, use `uv add <pacote>` ou `uv lock --upgrade-package <pacote>` e inclua o `uv.lock` atualizado no commit.
 
 ## Onde ficam os dados
 
@@ -214,7 +192,7 @@ Detalhes importantes:
 | Saída não aceita 44,1 kHz mono | O diálogo informa o erro. Escolha outra saída ou ajuste o dispositivo no sistema operacional. |
 | Entrada genérica de 48 kHz selecionada | Ela não substitui a UAC de 44,1 kHz. Escolha `ESP32-S3 Processed Audio`. |
 | `Device unavailable` | Outra captura pode estar usando a interface em modo exclusivo. Linux: pare o gravador anterior (ou `arecord`). Windows: feche programas como Discord ou OBS e, em *Configurações de som → Mais configurações de som → (dispositivo) → Propriedades → Avançado*, desmarque "Permitir que aplicativos tenham controle exclusivo". Depois aguarde a UAC liberar o dispositivo e inicie o monitor novamente. |
-| `PortAudio library not found` | Linux: instale a PortAudio (Fedora: `sudo dnf install portaudio`; Ubuntu/Debian: `sudo apt install libportaudio2`); o AppImage já traz uma cópia de reserva. Windows: a PortAudio vem com o `sounddevice`; reinstale com `pip install --force-reinstall sounddevice`. |
+| `PortAudio library not found` | Linux: instale a PortAudio (Fedora: `sudo dnf install portaudio`; Ubuntu/Debian: `sudo apt install libportaudio2`); o AppImage já traz uma cópia de reserva. Windows: a PortAudio vem com o `sounddevice`; reinstale com `uv sync --reinstall-package sounddevice`. |
 | Dispositivos no Windows | O programa usa o sistema de áudio WASAPI, então cada dispositivo aparece uma vez só. Se a placa foi conectada com o programa aberto e não aparece, use **Atualizar**. |
 | Avisos de `input/output underflow/overflow` | O host está perdendo blocos. Reduza a carga do computador ou aumente o buffer da DAW para 128 amostras. |
 
@@ -229,7 +207,8 @@ Detalhes importantes:
 ├── presets/           # Presets JSON de demonstração
 ├── tests/             # Testes (pytest)
 ├── main.py            # Ponto de entrada
-└── requirements.txt   # Dependências
+├── pyproject.toml     # Dependências do projeto
+└── uv.lock            # Versões travadas das dependências
 ```
 
 A interface é definida pelos arquivos `.ui` em `gui/`, carregados em tempo de execução por `gui/ui_loader.py`. Para mudar o layout, edite-os no Qt Designer; não é preciso gerar código com `pyuic6`.
@@ -237,8 +216,7 @@ A interface é definida pelos arquivos `.ui` em `gui/`, carregados em tempo de e
 ## Testes
 
 ```bash
-pip install pytest
-QT_QPA_PLATFORM=offscreen python -m pytest
+uv run pytest
 ```
 
 Os testes não precisam da pedaleira nem de placa de som (ambas são simuladas) e gravam seus dados numa pasta temporária, nunca em `output/`.
@@ -259,7 +237,7 @@ O build demora alguns minutos (baixar e empacotar o PyTorch é a parte mais lent
 
 O empacotamento usa o `mksquashfs` da própria distribuição, sem ferramentas de empacotamento de terceiros. As peças baixadas de fora (Python portátil, runtime do AppImage e PortAudio) estão fixadas em versões exatas e conferidas por SHA-256 ou pelo commit do Git: se uma delas mudar na origem, o build para em vez de publicar algo não conferido. Para atualizar uma versão, veja as instruções no topo de `packaging/build_appimage.sh`.
 
-Para montar localmente (Linux x86_64, com `gcc`, `make`, `git`, `curl`, `squashfs-tools`, os cabeçalhos da ALSA e a `libxcb-cursor`; Fedora: `sudo dnf install gcc make git curl squashfs-tools alsa-lib-devel xcb-util-cursor`):
+Para montar localmente (Linux x86_64, com o `uv`, `gcc`, `make`, `git`, `curl`, `squashfs-tools`, os cabeçalhos da ALSA e a `libxcb-cursor`; Fedora: `sudo dnf install gcc make git curl squashfs-tools alsa-lib-devel xcb-util-cursor`):
 
 ```bash
 bash packaging/build_appimage.sh 1.0.0   # gera dist/Uninstrumephy-1.0.0-x86_64.AppImage
