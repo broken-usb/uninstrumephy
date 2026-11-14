@@ -36,7 +36,7 @@ O software usa Inteligência Artificial para separar os instrumentos da faixa e 
 
 ## Requisitos
 
-- Linux
+- Linux ou Windows 10/11 (64 bits)
 - Python **3.12 ou superior** (recomendado: **3.14+**)
 - FFmpeg
 - Conjunto completo de dependências do `requirements.txt`
@@ -67,8 +67,11 @@ O AppImage usa o PyTorch **só para CPU**, porque a versão com CUDA ultrapassar
    | Ubuntu/Debian | `sudo apt update && sudo apt install python3-full` | `sudo apt install ffmpeg` |
    | Arch | `sudo pacman -S python` | `sudo pacman -S ffmpeg` |
    | RHEL/Fedora | `sudo dnf install python` | `sudo dnf swap ffmpeg-free ffmpeg --allowerasing` (requer RPM Fusion) |
+   | Windows 10/11 | `winget install Python.Python.3.14` | `winget install Gyan.FFmpeg` |
 
-   > Verifique a versão com `python3 --version`. A versão mínima é a 3.12, mas recomendamos a 3.14 ou superior. Se o repositório da sua distribuição não oferece a versão desejada, instale-a por outro meio (por exemplo, `uv python install 3.14`).
+   > No Windows, rode os comandos no Prompt de Comando ou no PowerShell e, depois de instalar, feche e abra o terminal para que `python` e `ffmpeg` sejam encontrados.
+
+   > Verifique a versão com `python3 --version` (no Windows, `python --version`). A versão mínima é a 3.12, mas recomendamos a 3.14 ou superior. Se o repositório da sua distribuição não oferece a versão desejada, instale-a por outro meio (por exemplo, `uv python install 3.14`).
 
 2. **Clone o repositório**
 
@@ -83,6 +86,15 @@ O AppImage usa o PyTorch **só para CPU**, porque a versão com CUDA ultrapassar
    python -m venv .venv
    source .venv/bin/activate
    ```
+
+   No Windows:
+
+   ```bat
+   python -m venv .venv
+   .venv\Scripts\activate
+   ```
+
+   > Se o PowerShell recusar o `activate` por política de execução, use o Prompt de Comando ou rode uma vez `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
 
 4. **Instale as dependências**
 
@@ -131,8 +143,9 @@ python main.py --self-test                      # pelo código-fonte
 | --- | --- | --- |
 | Código-fonte | `output/` na pasta do projeto | `presets/` na pasta do projeto |
 | AppImage | `~/.local/share/uninstrumephy/` | `~/.local/share/uninstrumephy/presets/` (criada na primeira execução com os presets de demonstração) |
+| Pasta sem permissão de escrita (ex.: `C:\Program Files`) | Linux: `~/.local/share/uninstrumephy/`; Windows: `%LOCALAPPDATA%\uninstrumephy\` | `presets\` dentro dessa pasta (criada com os presets de demonstração) |
 
-A variável de ambiente `UNINSTRUMEPHY_DATA_DIR` substitui essa pasta em ambos os casos. O log da sessão atual fica em `logs/latest-log.txt`, e o da anterior em `logs/previous-log.txt`.
+A variável de ambiente `UNINSTRUMEPHY_DATA_DIR` substitui essa pasta em todos os casos. O log da sessão atual fica em `logs/latest-log.txt`, e o da anterior em `logs/previous-log.txt`.
 
 ## Integração com o hardware (Placa A)
 
@@ -200,8 +213,9 @@ Detalhes importantes:
 | --- | --- |
 | Saída não aceita 44,1 kHz mono | O diálogo informa o erro. Escolha outra saída ou ajuste o dispositivo no sistema operacional. |
 | Entrada genérica de 48 kHz selecionada | Ela não substitui a UAC de 44,1 kHz. Escolha `ESP32-S3 Processed Audio`. |
-| `Device unavailable` | Outra captura pode estar usando a interface ALSA em modo exclusivo. Pare o gravador anterior (ou `arecord`), aguarde a UAC liberar o dispositivo e inicie o monitor novamente. |
-| `PortAudio library not found` | Instale a PortAudio (Fedora: `sudo dnf install portaudio`; Ubuntu/Debian: `sudo apt install libportaudio2`). O AppImage já traz uma cópia de reserva. |
+| `Device unavailable` | Outra captura pode estar usando a interface em modo exclusivo. Linux: pare o gravador anterior (ou `arecord`). Windows: feche programas como Discord ou OBS e, em *Configurações de som → Mais configurações de som → (dispositivo) → Propriedades → Avançado*, desmarque "Permitir que aplicativos tenham controle exclusivo". Depois aguarde a UAC liberar o dispositivo e inicie o monitor novamente. |
+| `PortAudio library not found` | Linux: instale a PortAudio (Fedora: `sudo dnf install portaudio`; Ubuntu/Debian: `sudo apt install libportaudio2`); o AppImage já traz uma cópia de reserva. Windows: a PortAudio vem com o `sounddevice`; reinstale com `pip install --force-reinstall sounddevice`. |
+| Dispositivos no Windows | O programa usa o sistema de áudio WASAPI, então cada dispositivo aparece uma vez só. Se a placa foi conectada com o programa aberto e não aparece, use **Atualizar**. |
 | Avisos de `input/output underflow/overflow` | O host está perdendo blocos. Reduza a carga do computador ou aumente o buffer da DAW para 128 amostras. |
 
 ## Estrutura do repositório

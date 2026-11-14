@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 import os
 import queue
+import re
+import sys
 import threading
 import time
 from contextlib import contextmanager
@@ -59,6 +61,10 @@ def _sounddevice_error_message(exc: BaseException) -> str:
     if isinstance(exc, ImportError):
         return ("A biblioteca 'sounddevice' não foi encontrada. "
                 "Instale as dependências com: pip install -r requirements.txt")
+    if sys.platform == "win32":
+        return ("A biblioteca de áudio PortAudio não pôde ser carregada. Reinstale as "
+                "dependências com: pip install --force-reinstall sounddevice "
+                f"Detalhe: {exc}")
     return ("A biblioteca de áudio PortAudio não foi encontrada no sistema. "
             "Instale-a (Fedora: sudo dnf install portaudio; "
             "Ubuntu/Debian: sudo apt install libportaudio2) e abra o programa de novo. "
@@ -74,38 +80,65 @@ def _sounddevice_error_message(exc: BaseException) -> str:
 # forma de reler a lista é reiniciar o PortAudio, o que fecha qualquer fluxo
 # aberto. Por isso o reinício:
 #   * só acontece sem fluxos ativos (contados por _stream_guard);
-#   * no modo automático, só quando a lista de placas do kernel muda
-#     (/proc/asound/cards, leitura barata), já que reiniciar o PortAudio faz
-#     ele consultar cada dispositivo e pode levar centenas de ms.
+#   * no modo automático, só quando a lista de dispositivos do sistema muda,
+#     já que reiniciar o PortAudio faz ele consultar cada dispositivo e pode
+#     levar centenas de ms. A mudança é detectada:
+#       - no Linux, pela lista de placas do kernel (/proc/asound/cards);
+#       - nos demais sistemas (Windows), pela lista de dispositivos que o Qt
+#         acompanha em tempo real. Ela só pode ser lida na thread da
+#         interface; fora dela (ex.: reconexão do monitor), o reinício é
+#         feito "às cegas", no máximo a cada `blind_interval` segundos.
 _PA_LOCK = threading.RLock()
 _active_streams = 0
 _ASOUND_CARDS = Path("/proc/asound/cards")
 _last_cards_signature: str | None = None
+_last_refresh = 0.0
+
+
+def _qt_audio_devices_signature() -> str | None:
+    """Identificadores dos dispositivos de áudio vistos pelo Qt (só na thread da interface)."""
+    try:
+        from PyQt6.QtCore import QCoreApplication
+        app = QCoreApplication.instance()
+        if app is None or QThread.currentThread() != app.thread():
+            return None
+        from PyQt6.QtMultimedia import QMediaDevices
+        devices = [*QMediaDevices.audioInputs(), *QMediaDevices.audioOutputs()]
+    except Exception:
+        return None
+    return "|".join(sorted(bytes(d.id()).hex() for d in devices))
 
 
 def _sound_cards_signature() -> str | None:
-    """Lista de placas de som do kernel (Linux/ALSA); None se indisponível."""
+    """Assinatura da lista de dispositivos de áudio; None se indisponível."""
     try:
         return _ASOUND_CARDS.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        return None
+        return _qt_audio_devices_signature()
 
 
-def refresh_devices(force: bool = True) -> bool:
+def refresh_devices(force: bool = True, blind_interval: float | None = None) -> bool:
     """Faz o PortAudio reler a lista de dispositivos do sistema.
 
     force=True  — reinicia sempre (ex.: botão "Atualizar").
-    force=False — reinicia só se a lista de placas do kernel mudou desde o
-                  último reinício; caso contrário não faz nada (barato o
+    force=False — reinicia só se a lista de dispositivos do sistema mudou desde
+                  o último reinício; caso contrário não faz nada (barato o
                   bastante para ser chamado periodicamente).
+    blind_interval — quando não há como saber se a lista mudou (Windows, fora
+                  da thread da interface), reinicia mesmo assim se o último
+                  reinício foi há pelo menos este tempo, em segundos.
 
     Retorna True se a lista foi relida. Nunca reinicia com um fluxo aberto.
     """
-    global _last_cards_signature
+    global _last_cards_signature, _last_refresh
     signature = _sound_cards_signature()
     with _PA_LOCK:
-        if not force and (signature is None or signature == _last_cards_signature):
-            return False
+        if not force:
+            if signature is None:
+                if blind_interval is None or time.monotonic() - _last_refresh < blind_interval:
+                    return False
+            elif signature == _last_cards_signature:
+                return False
         if _active_streams:
             logger.debug("Atualização de dispositivos adiada: há fluxo de áudio aberto.")
             return False
@@ -116,7 +149,9 @@ def refresh_devices(force: bool = True) -> bool:
         except Exception as exc:
             logger.warning("Não foi possível reler a lista de dispositivos de áudio: %s", exc)
             return False
-        _last_cards_signature = signature
+        if signature is not None:
+            _last_cards_signature = signature
+        _last_refresh = time.monotonic()
         logger.info("Lista de dispositivos de áudio relida.")
         return True
 
@@ -139,6 +174,85 @@ def _query_devices(sd, index: int | None = None):
         return sd.query_devices() if index is None else sd.query_devices(index)
 
 
+# --------------------------------------------------------------------------- #
+# Windows: um único sistema de áudio (WASAPI)
+# --------------------------------------------------------------------------- #
+# No Windows, o PortAudio lista cada dispositivo uma vez por sistema de áudio
+# (MME, DirectSound, WASAPI, WDM-KS). Mostrar todos repetiria a pedaleira 3 ou
+# 4 vezes (no MME com o nome cortado em 31 caracteres) e permitiria escolher
+# entrada e saída de sistemas diferentes, combinação que o PortAudio recusa.
+# Usamos só o WASAPI: é o sistema atual do Windows e o de menor latência. Em
+# modo compartilhado ele exige a taxa configurada no Windows (em geral 48 kHz
+# nas saídas); `auto_convert` deixa o próprio Windows converter de/para 44,1 kHz.
+WINDOWS_HOSTAPI = "Windows WASAPI"
+
+
+def _preferred_hostapi(sd) -> int | None:
+    """Índice do sistema de áudio a usar, ou None para mostrar todos (Linux)."""
+    if sys.platform != "win32":
+        return None
+    try:
+        with _PA_LOCK:
+            hostapis = sd.query_hostapis()
+    except Exception:
+        return None
+    for index, api in enumerate(hostapis):
+        if api.get("name") == WINDOWS_HOSTAPI:
+            return index
+    return None
+
+
+def _is_visible(info, hostapi: int | None) -> bool:
+    return hostapi is None or info.get("hostapi") == hostapi
+
+
+def _extra_settings(sd, device_index: int | None):
+    """Configurações específicas do sistema de áudio para abrir este dispositivo."""
+    if device_index is None or sys.platform != "win32":
+        return None
+    try:
+        with _PA_LOCK:
+            api = sd.query_hostapis(sd.query_devices(device_index)["hostapi"])
+    except Exception:
+        return None
+    if api.get("name") == WINDOWS_HOSTAPI:
+        return sd.WasapiSettings(auto_convert=True)
+    return None
+
+
+def _system_default(sd, kind: str) -> int | None:
+    """Dispositivo padrão do sistema ('input' ou 'output') no sistema de áudio usado."""
+    hostapi = _preferred_hostapi(sd)
+    if hostapi is not None:
+        with _PA_LOCK:
+            index = sd.query_hostapis(hostapi).get(f"default_{kind}_device", -1)
+    else:
+        index = sd.default.device[0 if kind == "input" else 1]
+    return int(index) if index is not None and index >= 0 else None
+
+
+def _device_key(name: str) -> str:
+    """Parte estável do nome de um dispositivo, para reencontrá-lo após reconexão.
+
+    Linux:   "ESP32-S3 Processed Audio: USB Audio (hw:2,0)" — o sufixo após ":"
+             (com o número da placa) muda a cada reconexão.
+    Windows: "Microfone (2- ESP32-S3 Processed Audio)" — o Windows acrescenta
+             "2- ", "3- "... quando há dispositivos com o mesmo nome.
+    """
+    base = name.split(":", 1)[0]
+    base = re.sub(r"\(\d+-\s*", "(", base)
+    return " ".join(base.lower().split())
+
+
+def _is_retryable(exc: BaseException) -> bool:
+    """Erros típicos da janela em que a placa USB está sendo reconectada."""
+    code = exc.args[1] if len(getattr(exc, "args", ())) > 1 else None
+    text = str(exc)
+    return code in (-9985, -9996) or any(
+        key in text for key in ("Device unavailable", "No such device", "Invalid device")
+    )
+
+
 def list_input_devices() -> list[dict]:
     """
     Lista todos os dispositivos de entrada de áudio do sistema operacional,
@@ -147,9 +261,10 @@ def list_input_devices() -> list[dict]:
     try:
         sd = _import_sounddevice()
         devices = _query_devices(sd)
+        hostapi = _preferred_hostapi(sd)
         input_devs = []
         for idx, d in enumerate(devices):
-            if d.get("max_input_channels", 0) > 0:
+            if d.get("max_input_channels", 0) > 0 and _is_visible(d, hostapi):
                 name = d.get("name", f"Dispositivo {idx}")
                 # Identifica descritores do firmware TinyUSB da Placa A
                 is_esp = any(k in name.lower() for k in ("esp32", "pedal", "processed audio", "uac"))
@@ -176,9 +291,10 @@ def list_output_devices() -> list[dict]:
     try:
         sd = _import_sounddevice()
         devices = _query_devices(sd)
+        hostapi = _preferred_hostapi(sd)
         output_devs = []
         for idx, d in enumerate(devices):
-            if d.get("max_output_channels", 0) > 0:
+            if d.get("max_output_channels", 0) > 0 and _is_visible(d, hostapi):
                 name = d.get("name", f"Saída {idx}")
                 output_devs.append({
                     "index": idx,
@@ -203,9 +319,9 @@ def get_default_input_device_index() -> Optional[int]:
         for d in devices:
             if d["is_esp32"]:
                 return d["index"]
-        default_in = sd.default.device[0]
-        if default_in is not None and default_in >= 0:
-            return int(default_in)
+        default_in = _system_default(sd, "input")
+        if default_in is not None:
+            return default_in
         if devices:
             return devices[0]["index"]
     except Exception:
@@ -217,9 +333,9 @@ def get_default_output_device_index() -> Optional[int]:
     """Retorna a saída padrão do PortAudio, se houver uma disponível."""
     try:
         sd = _import_sounddevice()
-        default_out = sd.default.device[1]
-        if default_out is not None and default_out >= 0:
-            return int(default_out)
+        default_out = _system_default(sd, "output")
+        if default_out is not None:
+            return default_out
         devices = list_output_devices()
         return devices[0]["index"] if devices else None
     except Exception:
@@ -263,17 +379,18 @@ class LiveMonitorThread(QThread):
         """Reobtém o índice após hotplug ou reset da USB.
 
         Índices do PortAudio não são estáveis quando uma placa USB é
-        reconectada. O nome ALSA contém ``ESP32-S3 Processed Audio`` e é
-        usado como identidade estável para a tentativa de reabertura.
+        reconectada. O nome do dispositivo (ex.: ``ESP32-S3 Processed Audio``)
+        é usado como identidade estável para a tentativa de reabertura, sem as
+        partes que mudam a cada reconexão (veja _device_key) e só dentro do
+        sistema de áudio em uso (no Windows, WASAPI).
         """
         if not name_hint:
             return None
-        # O sufixo ``(hw:N,0)`` pode mudar após reconexão; use o nome do
-        # produto antes dos detalhes ALSA.
-        needle = name_hint.split(":", 1)[0].strip().lower()
+        needle = _device_key(name_hint)
+        hostapi = _preferred_hostapi(sd)
         for index, info in enumerate(_query_devices(sd)):
             channels = info.get("max_input_channels", 0) if input_device else info.get("max_output_channels", 0)
-            if channels and needle in info.get("name", "").lower():
+            if channels and _is_visible(info, hostapi) and needle in _device_key(info.get("name", "")):
                 return index
         return None
 
@@ -343,8 +460,10 @@ class LiveMonitorThread(QThread):
                         )
                     # Sem isto a busca abaixo veria sempre a lista antiga do
                     # PortAudio e a placa reconectada nunca seria encontrada.
-                    # Só reinicia se o kernel registrou mudança de placas.
-                    refresh_devices(force=False)
+                    # Só reinicia se o sistema registrou mudança de dispositivos;
+                    # onde isso não dá para saber nesta thread (Windows), a
+                    # partir da 2ª tentativa relê no máximo a cada 2 s.
+                    refresh_devices(force=False, blind_interval=2.0 if _attempt else None)
                     if self.input_name_hint:
                         refreshed = self._find_device_index(sd, self.input_name_hint, True)
                         if refreshed is None:
@@ -358,19 +477,29 @@ class LiveMonitorThread(QThread):
                             samplerate=self.sample_rate,
                             channels=1,
                             dtype="float32",
+                            extra_settings=_extra_settings(sd, self.input_device_index),
                         )
                         input_error = None
                         break
                     except Exception as exc:
                         input_error = exc
-                        # -9985 (Device unavailable) inclui a janela de
-                        # reconexão/hotplug; dê tempo à ALSA para atualizar.
-                        if "Device unavailable" not in str(exc) and "No such device" not in str(exc):
+                        # -9985 (Device unavailable) e -9996 (Invalid device)
+                        # incluem a janela de reconexão/hotplug; dê tempo ao
+                        # sistema para atualizar a lista.
+                        if not _is_retryable(exc):
                             break
                         time.sleep(0.25)
                 if input_error is not None:
                     input_name = self.input_name_hint or "entrada selecionada"
-                    busy_hint = " Feche outra gravação/arecord que possa estar usando a UAC." if "Device unavailable" in str(input_error) else ""
+                    busy_hint = ""
+                    if "Device unavailable" in str(input_error):
+                        busy_hint = (
+                            " Feche outros programas que possam estar usando a entrada (ex.: "
+                            "Discord, OBS) e, nas propriedades do dispositivo, desative "
+                            "\"Permitir que aplicativos tenham controle exclusivo\"."
+                            if sys.platform == "win32"
+                            else " Feche outra gravação/arecord que possa estar usando a UAC."
+                        )
                     raise RuntimeError(
                         f"A entrada '{input_name}' ficou indisponível ou não aceita "
                         f"{self.sample_rate} Hz. Desconecte/reconecte a USB da Placa A, "
@@ -394,6 +523,7 @@ class LiveMonitorThread(QThread):
                         samplerate=self.sample_rate,
                         channels=output_channels,
                         dtype="float32",
+                        extra_settings=_extra_settings(sd, self.output_device_index),
                     )
                 except Exception as exc:
                     output_name = output_info.get("name", "saída")
@@ -404,6 +534,10 @@ class LiveMonitorThread(QThread):
                     ) from exc
 
             self.status_msg.emit("Monitoramento ao vivo ativo — áudio processado da Placa A")
+            extra = (
+                _extra_settings(sd, self.input_device_index),
+                _extra_settings(sd, self.output_device_index),
+            )
             with _stream_guard(), sd.Stream(
                 device=(self.input_device_index, self.output_device_index),
                 samplerate=self.sample_rate,
@@ -411,6 +545,7 @@ class LiveMonitorThread(QThread):
                 dtype="float32",
                 blocksize=0,
                 latency=("low", "low"),
+                extra_settings=extra if any(extra) else None,
                 callback=callback,
             ) as stream:
                 # Em um fluxo duplex, `latency` é o par (entrada, saída) em
@@ -497,6 +632,7 @@ class AudioRecorderThread(QThread):
                 channels=self.channels,
                 dtype="float32",
                 blocksize=1024,
+                extra_settings=_extra_settings(sd, self.device_index),
                 callback=callback,
             ):
                 while not self._stop_requested:

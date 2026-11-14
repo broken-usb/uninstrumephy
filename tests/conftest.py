@@ -27,7 +27,8 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 # testes dependam do áudio da máquina: com a biblioteca do PipeWire instalada
 # sem a configuração dele (comum em servidores de CI), o player do Qt trava
 # com falha de segmentação ao criar a janela principal.
-os.environ.setdefault("QT_AUDIO_BACKEND", "alsa")
+if sys.platform.startswith("linux"):
+    os.environ.setdefault("QT_AUDIO_BACKEND", "alsa")
 os.environ["UNINSTRUMEPHY_DATA_DIR"] = tempfile.mkdtemp(prefix="uninstrumephy-tests-")
 
 if importlib.util.find_spec("torch") is None or importlib.util.find_spec("demucs") is None:

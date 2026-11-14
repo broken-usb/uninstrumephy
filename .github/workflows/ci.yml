@@ -15,7 +15,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python-version: ["3.12", "3.13", "3.14", "3.15"]
+        python-version: ["3.12", "3.13", "3.14"]
 
     steps:
       - name: Checkout repository
@@ -60,3 +60,33 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: |
           xvfb-run -a python -m pytest -v
+
+  test-windows:
+    # Os mesmos testes num Windows de verdade (interface sem janela, sem placa
+    # de som). No Windows, o PyTorch do PyPI já é a versão para CPU.
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12", "3.13", "3.14"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Configurar Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Instalar Dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+
+      - name: Executar Testes
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: python -m pytest -v

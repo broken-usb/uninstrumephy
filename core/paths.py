@@ -2,11 +2,12 @@
 Onde o programa grava os seus arquivos.
 
 Rodando a partir do código-fonte, tudo continua dentro da pasta do projeto,
-como antes (output/ e presets/). Rodando empacotado (AppImage), a pasta do
-programa é somente leitura, então os dados vão para as pastas padrão do
-usuário no Linux:
+como antes (output/ e presets/). Rodando empacotado (AppImage) ou de uma
+pasta sem permissão de escrita (ex.: C:\\Program Files), os dados vão para a
+pasta padrão do usuário no sistema:
 
-    ~/.local/share/uninstrumephy/          (ou $XDG_DATA_HOME/uninstrumephy)
+    Linux:   ~/.local/share/uninstrumephy/   (ou $XDG_DATA_HOME/uninstrumephy)
+    Windows: %LOCALAPPDATA%\\uninstrumephy\\
         logs/        latest-log.txt, previous-log.txt
         recordings/  gravações da pedaleira/microfone
         presets/     presets do usuário (começa com os presets incluídos)
@@ -21,6 +22,9 @@ from __future__ import annotations
 import logging
 import os
 import shutil
+import sys
+import tempfile
+from functools import lru_cache
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -30,9 +34,36 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 BUNDLED_PRESETS_DIR = PROJECT_ROOT / "presets"
 
 
+@lru_cache(maxsize=None)
+def _project_is_writable() -> bool:
+    """Testa de verdade se dá para criar arquivos na pasta do programa.
+
+    os.access(W_OK) não serve: no Windows ele ignora as permissões da pasta
+    (ACLs) e diria que C:\\Program Files é gravável para qualquer usuário.
+    """
+    try:
+        with tempfile.TemporaryFile(dir=PROJECT_ROOT):
+            return True
+    except OSError:
+        return False
+
+
 def is_packaged() -> bool:
-    """True se rodando como AppImage (ou de uma pasta sem permissão de escrita)."""
-    return bool(os.environ.get("APPIMAGE")) or not os.access(PROJECT_ROOT, os.W_OK)
+    """True se rodando como AppImage/executável empacotado ou de uma pasta sem escrita."""
+    return (
+        bool(os.environ.get("APPIMAGE"))
+        or bool(getattr(sys, "frozen", False))  # PyInstaller e similares
+        or not _project_is_writable()
+    )
+
+
+def _user_data_base() -> Path:
+    """Pasta-base de dados de aplicativos do usuário, conforme o sistema."""
+    if sys.platform == "win32" and not os.environ.get("APPIMAGE"):
+        local = os.environ.get("LOCALAPPDATA")
+        return Path(local) if local else Path.home() / "AppData" / "Local"
+    xdg = os.environ.get("XDG_DATA_HOME")
+    return Path(xdg) if xdg else Path.home() / ".local" / "share"
 
 
 def data_dir() -> Path:
@@ -41,8 +72,7 @@ def data_dir() -> Path:
     if override:
         return Path(override).expanduser()
     if is_packaged():
-        xdg = os.environ.get("XDG_DATA_HOME") or str(Path.home() / ".local" / "share")
-        return Path(xdg) / APP_NAME
+        return _user_data_base() / APP_NAME
     return PROJECT_ROOT / "output"
 
 

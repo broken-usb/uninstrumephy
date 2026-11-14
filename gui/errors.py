@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import re
+import sys
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
@@ -53,6 +54,23 @@ def _quoted_path(message: str) -> str | None:
     return match.group(1) if match else None
 
 
+def _is_missing_ffmpeg(message: str, details: str | None) -> bool:
+    """O FileNotFoundError veio de tentar executar ffmpeg/ffprobe?
+
+    Linux: "[Errno 2] No such file or directory: 'ffprobe'".
+    Windows: "[WinError 2] O sistema não pode encontrar o arquivo especificado",
+    sem o nome do programa. Nem sempre ele aparece no traceback (o Python 3.12
+    mostra só a 1ª linha de uma chamada em várias linhas), então reconhecemos
+    pela origem: o módulo de áudio do Demucs, que só executa ffmpeg e ffprobe,
+    tentando executar um programa (subprocess).
+    """
+    if _quoted_path(message) in ("ffmpeg", "ffprobe"):
+        return True
+    if "WinError 2" not in message or not details:
+        return False
+    return bool(re.search(r"demucs[\\/]audio\.py", details)) and "subprocess.py" in details
+
+
 def describe_error(error: str | BaseException) -> ErrorInfo:
     """Converte um erro (texto de worker ou exceção) em uma mensagem amigável."""
     if isinstance(error, BaseException):
@@ -82,13 +100,17 @@ def describe_error(error: str | BaseException) -> ErrorInfo:
             "Feche outros programas pesados e tente de novo, ou use um trecho menor da música.",
             details,
         )
-    if exc_type == "FileNotFoundError" and _quoted_path(message) in ("ffmpeg", "ffprobe"):
+    if exc_type == "FileNotFoundError" and _is_missing_ffmpeg(message, details):
         # O Demucs chama os programas ffmpeg/ffprobe para ler as músicas.
+        if sys.platform == "win32":
+            how = ("Instale-o (no Prompt de Comando: winget install Gyan.FFmpeg), "
+                   "feche e abra o programa de novo e tente outra vez.")
+        else:
+            how = ("Instale-o (Fedora: sudo dnf install ffmpeg-free; "
+                   "Ubuntu/Debian: sudo apt install ffmpeg) e tente de novo.")
         return ErrorInfo(
             "O programa ffmpeg não está instalado.",
-            "Ele é necessário para separar as faixas com o Demucs. Instale-o "
-            "(Fedora: sudo dnf install ffmpeg-free; Ubuntu/Debian: sudo apt install ffmpeg) "
-            "e tente de novo.",
+            f"Ele é necessário para separar as faixas com o Demucs. {how}",
             details,
         )
     if exc_type == "FileNotFoundError":
