@@ -1,0 +1,11 @@
+[flake8]
+# Pastas que não são código do projeto. Com o uv, as bibliotecas ficam em
+# .venv/ dentro do projeto, e o flake8 não ignora essa pasta por padrão: o
+# lint analisaria milhares de arquivos de terceiros (o PyTorch sozinho tem
+# 177 avisos que o CI trata como erro). build/ e dist/ vêm do build do
+# AppImage; output/ guarda os dados gerados pelo programa.
+extend-exclude =
+    .venv,
+    build,
+    dist,
+    output
